@@ -2,11 +2,13 @@
   <main class="page-shell">
     <header class="app-header">
       <div class="title-group">
-        <div class="eyebrow">Document Processing</div>
+        <div class="eyebrow">寰宇教育-教務部內部使用</div>
         <h1>PDF / 圖片轉文字</h1>
       </div>
       <div class="header-actions">
-        <span class="status-pill" :class="status">{{ selectedMode.title }}</span>
+        <span class="status-pill" :class="status">{{
+          selectedMode.title
+        }}</span>
       </div>
     </header>
 
@@ -14,22 +16,51 @@
       <aside class="control-panel">
         <h2 class="section-title">模式</h2>
         <div class="mode-grid">
-          <button v-for="item in modes" :key="item.value" class="mode-button" :class="{ active: mode === item.value }" type="button" @click="mode = item.value">
-            <span class="mode-icon">{{ item.value === "fast" ? "PDF" : "AI" }}</span>
+          <button
+            v-for="item in modes"
+            :key="item.value"
+            class="mode-button"
+            :class="{ active: mode === item.value }"
+            type="button"
+            @click="mode = item.value"
+          >
+            <span class="mode-icon">{{
+              item.value === "fast" ? "PDF" : "AI"
+            }}</span>
             <span>{{ item.title }}</span>
             <small>{{ item.description }}</small>
           </button>
         </div>
 
         <h2 class="section-title">檔案</h2>
-        <div class="drop-zone" :class="{ over: dragOver }" @click="fileInput?.click()" @dragover.prevent="dragOver = true" @dragleave="dragOver = false" @drop.prevent="handleDrop">
+        <div
+          class="drop-zone"
+          :class="{ over: dragOver }"
+          @click="fileInput?.click()"
+          @dragover.prevent="dragOver = true"
+          @dragleave="dragOver = false"
+          @drop.prevent="handleDrop"
+        >
           <div class="file-icon">▣</div>
           <strong>{{ file ? file.name : "選擇或拖拉 PDF / 圖片" }}</strong>
-          <span>{{ file ? `${Math.ceil(file.size / 1024)} KB` : "PDF、JPG、PNG、WEBP" }}</span>
-          <input ref="fileInput" hidden type="file" accept="application/pdf,image/*" @change="handleFileChange" />
+          <span>{{
+            file ? `${Math.ceil(file.size / 1024)} KB` : "PDF、JPG、PNG、WEBP"
+          }}</span>
+          <input
+            ref="fileInput"
+            hidden
+            type="file"
+            accept="application/pdf,image/*"
+            @change="handleFileChange"
+          />
         </div>
 
-        <button class="primary-button full" :disabled="status === 'loading'" type="button" @click="handleExtract">
+        <button
+          class="primary-button full"
+          :disabled="status === 'loading'"
+          type="button"
+          @click="handleExtract"
+        >
           {{ status === "loading" ? "解析中" : "開始解析" }}
         </button>
 
@@ -37,7 +68,9 @@
         <div v-if="diagnostics" class="diagnostics">
           <strong>後端解析診斷</strong>
           <span>頁數：{{ diagnostics.page_count ?? 0 }}</span>
-          <span v-for="page in diagnostics.pages" :key="page.page">Page {{ page.page }}: {{ page.char_count }} chars</span>
+          <span v-for="page in diagnostics.pages" :key="page.page"
+            >Page {{ page.page }}: {{ page.char_count }} chars</span
+          >
         </div>
       </aside>
 
@@ -45,32 +78,86 @@
         <div class="panel-header">
           <h2 class="section-title">解析文字</h2>
           <div class="icon-group">
-            <button class="icon-button" title="放大解析文字" type="button" @click="text.trim() && openEditor('text')">⤢</button>
-            <button class="icon-button" title="複製解析文字" type="button" @click="copyText(text)">⧉</button>
+            <button
+              class="icon-button"
+              title="放大解析文字"
+              type="button"
+              @click="text.trim() && openEditor('text')"
+            >
+              ⤢
+            </button>
+            <button
+              class="icon-button"
+              title="複製解析文字"
+              type="button"
+              @click="copyText(text)"
+            >
+              ⧉
+            </button>
           </div>
         </div>
-        <div class="hover-editor-trigger" @mouseenter="text.trim() && openEditor('text')">
-          <textarea v-model="text" class="textarea" placeholder="解析後的文字會出現在這裡。"></textarea>
+        <div
+          class="hover-editor-trigger"
+          @mouseenter="text.trim() && openEditor('text')"
+        >
+          <textarea
+            v-model="text"
+            class="textarea"
+            placeholder="解析後的文字會出現在這裡。"
+          ></textarea>
         </div>
 
         <div class="draft-actions">
           <div class="draft-button-group">
-            <button class="primary-inline-button" :disabled="aiStatus === 'loading'" type="button" @click="handleBuildSolution">
+            <button
+              class="primary-inline-button"
+              :disabled="aiStatus === 'loading'"
+              type="button"
+              @click="handleBuildSolution"
+            >
               {{ aiStatus === "loading" ? "生成中" : "AI 寫詳解" }}
             </button>
-            <button class="secondary-button" type="button" @click="solutionDraft = ''">清空詳解</button>
+            <button
+              class="secondary-button"
+              type="button"
+              @click="solutionDraft = ''"
+            >
+              清空詳解
+            </button>
           </div>
           <div class="icon-group">
-            <button class="icon-button" title="編輯詳解內容" type="button" @click="solutionDraft.trim() && openEditor('solution')">⤢</button>
-            <button class="icon-button" title="複製全部詳解" type="button" @click="copyText(solutionDraft)">⧉</button>
+            <button
+              class="icon-button"
+              title="編輯詳解內容"
+              type="button"
+              @click="solutionDraft.trim() && openEditor('solution')"
+            >
+              ⤢
+            </button>
+            <button
+              class="icon-button"
+              title="複製全部詳解"
+              type="button"
+              @click="copyText(solutionDraft)"
+            >
+              ⧉
+            </button>
           </div>
         </div>
 
-        <SolutionReview :value="solutionDraft" @edit="solutionDraft.trim() && openEditor('solution')" @copy="copyText" />
+        <SolutionReview
+          :value="solutionDraft"
+          @edit="solutionDraft.trim() && openEditor('solution')"
+          @copy="copyText"
+        />
       </section>
     </section>
 
-    <ExpandedEditorModal :editor="editorConfig" @close="expandedEditor = null" @copy="copyText" />
+    <ExpandedEditorModal
+      :editor="editorConfig"
+      @close="expandedEditor = null"
+      @copy="copyText"
+    />
     <div v-if="copyMessage" class="copy-toast">{{ copyMessage }}</div>
   </main>
 </template>
@@ -107,13 +194,27 @@ const dragOver = ref(false);
 const expandedEditor = ref(null);
 const copyMessage = ref("");
 
-const selectedMode = computed(() => modes.find((item) => item.value === mode.value) || modes[0]);
+const selectedMode = computed(
+  () => modes.find((item) => item.value === mode.value) || modes[0],
+);
 const editorConfig = computed(() => {
   if (expandedEditor.value === "text") {
-    return { title: "解析文字", value: text.value, onChange: (value) => { text.value = value; } };
+    return {
+      title: "解析文字",
+      value: text.value,
+      onChange: (value) => {
+        text.value = value;
+      },
+    };
   }
   if (expandedEditor.value === "solution") {
-    return { title: "詳解內容", value: solutionDraft.value, onChange: (value) => { solutionDraft.value = value; } };
+    return {
+      title: "詳解內容",
+      value: solutionDraft.value,
+      onChange: (value) => {
+        solutionDraft.value = value;
+      },
+    };
   }
   return null;
 });
@@ -158,7 +259,8 @@ async function handleExtract() {
 
   status.value = "error";
   diagnostics.value = result.diagnostics || null;
-  message.value = result.error || "沒有抽到文字。這份檔案可能需要 OCR / AI 精準模式。";
+  message.value =
+    result.error || "沒有抽到文字。這份檔案可能需要 OCR / AI 精準模式。";
 }
 
 async function handleBuildSolution() {
