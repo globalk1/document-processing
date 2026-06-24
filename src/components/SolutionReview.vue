@@ -55,10 +55,6 @@ defineEmits(["edit", "copy"]);
 
 const questionHeadingPattern = /^##\s*第\s*([^\s#]+)\s*題.*$/gm;
 const sectionPattern = /^(題目|解題思路|詳解|檢查|答案)：\s*(.*)$/;
-const fractionPattern = /\\frac\{([^{}]+)\}\{([^{}]+)\}/g;
-const subscriptDigits = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" };
-const superscriptDigits = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
-
 const openKeys = ref(new Set());
 const questions = computed(() => parseSolution(props.value));
 
@@ -144,98 +140,9 @@ const ContentFlow = defineComponent({
   name: "ContentFlow",
   props: { content: { type: String, default: "" } },
   setup(componentProps) {
-    return () => h(
-      "div",
-      { class: "content-flow" },
-      componentProps.content
-        .split(/\n\s*\n/)
-        .map((block) => block.trim())
-        .filter(Boolean)
-        .map((block, index) => renderBlock(block, index)),
-    );
+    return () => h("pre", { class: "content-flow" }, componentProps.content);
   },
 });
-
-function renderBlock(block, index) {
-  if (block.startsWith("\\[") && block.endsWith("\\]")) {
-    return h("div", { class: "equation-block", key: index }, renderLatex(block.replace(/^\\\[/, "").replace(/\\\]$/, "").trim()));
-  }
-
-  const lines = block.split("\n").filter((line) => line.trim());
-  const allBullets = lines.every((line) => /^[-*]\s+/.test(line.trim()));
-  if (allBullets) {
-    return h("ul", { class: "bullet-list", key: index }, lines.map((line) => h("li", { key: line }, renderLatex(line.replace(/^[-*]\s+/, "")))));
-  }
-
-  const allSteps = lines.every((line) => /^\d+[.)]\s+/.test(line.trim()));
-  if (allSteps) {
-    return h("ol", { class: "step-list", key: index }, lines.map((line) => {
-      const match = line.trim().match(/^(\d+)[.)]\s+(.*)$/);
-      return h("li", { key: line, value: Number(match[1]) }, renderLatex(match[2]));
-    }));
-  }
-
-  return h("p", { class: "paragraph", key: index }, lines.flatMap((line, lineIndex) => [
-    ...renderLatex(line),
-    lineIndex + 1 < lines.length ? h("br") : null,
-  ]));
-}
-
-function renderLatex(text) {
-  const pieces = [];
-  let lastIndex = 0;
-  let match;
-  fractionPattern.lastIndex = 0;
-
-  while ((match = fractionPattern.exec(text)) !== null) {
-    if (match.index > lastIndex) pieces.push(normalizeMathText(text.slice(lastIndex, match.index)));
-    pieces.push(h("span", { class: "fraction", key: `fraction-${match.index}` }, [
-      h("span", normalizeMathText(match[1])),
-      h("span", normalizeMathText(match[2])),
-    ]));
-    lastIndex = match.index + match[0].length;
-  }
-
-  if (lastIndex < text.length) pieces.push(normalizeMathText(text.slice(lastIndex)));
-  return pieces;
-}
-
-function normalizeMathText(text) {
-  return text
-    .replace(/\\\(|\\\)|\\\[|\\\]|\$/g, "")
-    .replace(/\\qquad|\\quad/g, " ")
-    .replace(/\\Rightarrow/g, "⇒")
-    .replace(/\\Leftarrow/g, "⇐")
-    .replace(/\\Leftrightarrow/g, "⇔")
-    .replace(/\\rightarrow/g, "→")
-    .replace(/\\left|\\right/g, "")
-    .replace(/\\times/g, "×")
-    .replace(/\\cdot/g, "·")
-    .replace(/\\div/g, "÷")
-    .replace(/\\pm/g, "±")
-    .replace(/\\leq/g, "≤")
-    .replace(/\\geq/g, "≥")
-    .replace(/\\neq/g, "≠")
-    .replace(/\\approx/g, "≈")
-    .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
-    .replace(/\\text\{([^{}]+)\}/g, "$1")
-    .replace(/_\{([0-9]+)\}/g, (_, value) => toSubscript(value))
-    .replace(/_([0-9]+)/g, (_, value) => toSubscript(value))
-    .replace(/\^\{([0-9]+)\}/g, (_, value) => toSuperscript(value))
-    .replace(/\^([0-9]+)/g, (_, value) => toSuperscript(value))
-    .replace(/\^\{([^{}]+)\}/g, "^$1")
-    .replace(/_\{([^{}]+)\}/g, "_$1")
-    .replace(/\\,/g, " ")
-    .replace(/\s{2,}/g, " ");
-}
-
-function toSubscript(value) {
-  return String(value).split("").map((digit) => subscriptDigits[digit] || digit).join("");
-}
-
-function toSuperscript(value) {
-  return String(value).split("").map((digit) => superscriptDigits[digit] || digit).join("");
-}
 </script>
 
 <style scoped>
@@ -331,51 +238,14 @@ function toSuperscript(value) {
 }
 
 :deep(.content-flow) {
-  display: grid;
-  gap: 8px;
+  margin: 0;
   color: #2b2b2b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1.75;
-}
-
-:deep(.paragraph) {
-  margin: 0;
   overflow-wrap: anywhere;
-}
-
-:deep(.equation-block) {
-  overflow-x: auto;
-  border-left: 3px solid #242424;
-  padding: 8px 10px;
-  background: #f6f6f6;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: nowrap;
-}
-
-:deep(.bullet-list),
-:deep(.step-list) {
-  margin: 0;
-  padding-left: 22px;
-}
-
-:deep(.fraction) {
-  display: inline-grid;
-  grid-template-rows: auto auto;
-  align-items: center;
-  vertical-align: middle;
-  margin: 0 3px;
-  font-size: 0.92em;
-  line-height: 1.05;
-  text-align: center;
-}
-
-:deep(.fraction span:first-child) {
-  border-bottom: 1px solid currentColor;
-  padding: 0 3px 1px;
-}
-
-:deep(.fraction span:last-child) {
-  padding: 1px 3px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .card-actions {
