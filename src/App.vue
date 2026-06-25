@@ -3,13 +3,11 @@
     <header class="app-header">
       <div class="title-group">
         <div class="eyebrow">寰宇教育-教務部內部使用</div>
-        <h1>文件解析與錯字檢查</h1>
+        <h1>文件解析與 Word 排版</h1>
       </div>
       <div class="header-actions">
         <span class="app-version">v{{ APP_VERSION }}</span>
-        <span class="status-pill" :class="status">{{
-          selectedMode.title
-        }}</span>
+        <span class="status-pill" :class="status">{{ selectedMode.title }}</span>
       </div>
     </header>
 
@@ -21,19 +19,45 @@
             v-for="item in modes"
             :key="item.value"
             class="mode-button"
-            :class="{ active: mode === item.value, disabled: item.disabled }"
-            :disabled="item.disabled"
+            :class="{ active: mode === item.value }"
             type="button"
-            @click="!item.disabled && (mode = item.value)"
+            @click="switchMode(item.value)"
           >
             <span class="mode-icon">{{ item.icon }}</span>
-            <span>
-              {{ item.title }}
-              <small v-if="item.disabled" class="disabled-label">暫停使用</small>
-            </span>
+            <span>{{ item.title }}</span>
             <small>{{ item.description }}</small>
           </button>
         </div>
+
+        <section v-if="isWordMode" class="template-panel">
+          <label class="field-label" for="word-template">輸出模板</label>
+          <select
+            id="word-template"
+            v-model="selectedWordTemplateId"
+            class="select-input"
+            :disabled="templatesLoading"
+          >
+            <option
+              v-for="template in wordTemplates"
+              :key="template.id"
+              :value="template.id"
+            >
+              {{ template.name }}
+            </option>
+          </select>
+          <p class="template-description">
+            {{ templatesLoading ? "正在取得模板..." : selectedWordTemplate.description }}
+          </p>
+
+          <label class="field-label" for="word-output-filename">下載檔名</label>
+          <input
+            id="word-output-filename"
+            v-model="wordOutputFilename"
+            class="text-input"
+            type="text"
+            placeholder="questions-排版.docx"
+          />
+        </section>
 
         <h2 class="section-title">檔案</h2>
         <div
@@ -45,29 +69,29 @@
           @drop.prevent="handleDrop"
         >
           <div class="file-icon">▣</div>
-          <strong>{{ file ? file.name : "選擇或拖拉 PDF、圖片、Word、TXT" }}</strong>
+          <strong>{{ file ? file.name : "選擇或拖拉 PDF、圖片、Word" }}</strong>
           <span>{{
-            file ? `${Math.ceil(file.size / 1024)} KB` : "PDF、JPG、PNG、WEBP、DOCX、TXT"
+            file ? `${Math.ceil(file.size / 1024)} KB` : "PDF、JPG、PNG、WEBP、DOCX"
           }}</span>
           <input
             ref="fileInput"
             hidden
             type="file"
-            accept="application/pdf,image/*,.docx,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            accept="application/pdf,image/*,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             @change="handleFileChange"
           />
         </div>
 
         <button
           class="primary-button full"
-          :disabled="status === 'loading'"
+          :disabled="status === 'loading' || status === 'generating'"
           type="button"
           @click="handleSelectedMode"
         >
-          {{ status === "loading" ? selectedMode.loadingTitle : selectedMode.actionTitle }}
+          {{ isBusy ? selectedMode.loadingTitle : selectedMode.actionTitle }}
         </button>
 
-        <p class="quota-note">
+        <p v-if="!isWordMode" class="quota-note">
           今日 AI 請求：已用 {{ aiQuota.used }} / {{ aiQuota.limit }}，
           剩餘 {{ aiQuota.remaining }} 次
         </p>
@@ -75,19 +99,19 @@
         <div v-if="diagnostics" class="diagnostics">
           <strong>後端解析診斷</strong>
           <span>頁數：{{ diagnostics.page_count ?? 0 }}</span>
-          <span v-for="page in diagnostics.pages" :key="page.page"
-            >Page {{ page.page }}: {{ page.char_count }} chars</span
-          >
+          <span v-for="page in diagnostics.pages" :key="page.page">
+            Page {{ page.page }}: {{ page.char_count }} chars
+          </span>
         </div>
       </aside>
 
       <section class="output-panel">
         <div class="panel-header">
-          <h2 class="section-title">文件文字</h2>
+          <h2 class="section-title">{{ isWordMode ? "Word 結構化資料" : "文件文字" }}</h2>
           <div class="icon-group">
             <button
               class="icon-button"
-              title="放大解析文字"
+              :title="isWordMode ? '放大 JSON' : '放大解析文字'"
               type="button"
               @click="text.trim() && openEditor('text')"
             >
@@ -95,7 +119,7 @@
             </button>
             <button
               class="icon-button"
-              title="複製解析文字"
+              :title="isWordMode ? '複製 JSON' : '複製解析文字'"
               type="button"
               @click="copyText(text)"
             >
@@ -110,85 +134,80 @@
           <textarea
             v-model="text"
             class="textarea"
-            placeholder="解析後的文字會出現在這裡。"
+            :placeholder="isWordMode ? '解析後的題目 JSON 會出現在這裡，可校正後再產生 Word。' : '解析後的文字會出現在這裡。'"
           ></textarea>
         </div>
 
-        <section v-if="proofreadResult" class="proofread-result-panel">
-          <div class="proofread-result-header">
+        <section v-if="isWordMode" class="word-result-panel">
+          <div class="word-stats">
             <div>
-              <h2 class="section-title">錯字檢查結果</h2>
-              <div class="result-meta">
-                {{ proofreadResult.engine === "local" ? "數學快速檢查" : "AI 不分科檢查" }}・共
-                {{ proofreadResult.summary?.issue_count ?? proofreadResult.issues?.length ?? 0 }} 處
-              </div>
+              <strong>{{ wordStats.sections }}</strong>
+              <span>區段</span>
             </div>
-            <button class="secondary-button" type="button" @click="copyText(proofreadResult.corrected_text)">
-              複製修正文
-            </button>
-          </div>
-          <div v-if="proofreadResult.issues?.length" class="issue-list">
-            <div
-              v-for="(issue, index) in proofreadResult.issues"
-              :key="`${issue.start}-${issue.end}-${index}`"
-              class="issue-card"
-            >
-              <div class="issue-line">
-                <del>{{ issue.original }}</del>
-                <span>→</span>
-                <strong>{{ issue.suggestion }}</strong>
-                <span class="position-tag">位置 {{ issue.start }}–{{ issue.end }}</span>
-              </div>
-              <small>{{ issue.reason || "建議修正" }}</small>
+            <div>
+              <strong>{{ wordStats.questions }}</strong>
+              <span>題目</span>
+            </div>
+            <div>
+              <strong>{{ wordStats.assets }}</strong>
+              <span>圖片/附件</span>
             </div>
           </div>
-          <div v-else class="no-issues">沒有發現明確錯字。</div>
-          <textarea class="textarea corrected-textarea" readonly :value="proofreadResult.corrected_text"></textarea>
+          <button
+            class="primary-inline-button"
+            :disabled="!text.trim() || status === 'generating'"
+            type="button"
+            @click="handleGenerateWord"
+          >
+            {{ status === "generating" ? "產生中" : "套用模板並下載 Word" }}
+          </button>
         </section>
 
-        <div class="draft-actions">
-          <div class="draft-button-group">
-            <button
-              class="primary-inline-button"
-              :disabled="aiStatus === 'loading'"
-              type="button"
-              @click="handleBuildSolution"
-            >
-              {{ aiStatus === "loading" ? "生成中" : "AI 寫詳解" }}
-            </button>
-            <button
-              class="secondary-button"
-              type="button"
-              @click="solutionDraft = ''"
-            >
-              清空詳解
-            </button>
+        <template v-else>
+          <div class="draft-actions">
+            <div class="draft-button-group">
+              <button
+                class="primary-inline-button"
+                :disabled="aiStatus === 'loading'"
+                type="button"
+                @click="handleBuildSolution"
+              >
+                {{ aiStatus === "loading" ? "生成中" : "AI 寫詳解" }}
+              </button>
+              <button
+                class="secondary-button"
+                type="button"
+                @click="solutionDraft = ''"
+              >
+                清空詳解
+              </button>
+            </div>
+            <div class="icon-group">
+              <button
+                class="icon-button"
+                title="編輯詳解內容"
+                type="button"
+                @click="solutionDraft.trim() && openEditor('solution')"
+              >
+                ⤢
+              </button>
+              <button
+                class="icon-button"
+                title="複製全部詳解"
+                type="button"
+                @click="copyText(solutionDraft)"
+              >
+                ⧉
+              </button>
+            </div>
           </div>
-          <div class="icon-group">
-            <button
-              class="icon-button"
-              title="編輯詳解內容"
-              type="button"
-              @click="solutionDraft.trim() && openEditor('solution')"
-            >
-              ⤢
-            </button>
-            <button
-              class="icon-button"
-              title="複製全部詳解"
-              type="button"
-              @click="copyText(solutionDraft)"
-            >
-              ⧉
-            </button>
-          </div>
-        </div>
 
-        <SolutionReview
-          :value="solutionDraft"
-          @edit="solutionDraft.trim() && openEditor('solution')"
-          @copy="copyText"
-        />
+          <SolutionReview
+            :value="solutionDraft"
+            @edit="solutionDraft.trim() && openEditor('solution')"
+            @copy="copyText"
+          />
+        </template>
       </section>
     </section>
 
@@ -205,7 +224,13 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
 import SolutionReview from "./components/SolutionReview.vue";
-import { extractPdfText, processAiText, proofreadDocument } from "./services/api";
+import {
+  extractPdfText,
+  fetchWordTemplates,
+  generateWordDocument,
+  parseWordDocument,
+  processAiText,
+} from "./services/api";
 import {
   extractAccuratePdfInPages,
   isPdfFile,
@@ -216,6 +241,19 @@ import {
   APP_VERSION,
   showReleaseAnnouncementIfNeeded,
 } from "./services/releaseAnnouncement";
+
+const FALLBACK_WORD_TEMPLATES = [
+  {
+    id: "teams_conversion",
+    name: "Teams 轉換",
+    description: "Teams 轉換版型；標題只保留 CH 單元，每一行採 1.5 倍行距且不產生 bullet。",
+  },
+  {
+    id: "junior_math_handout",
+    name: "國中數學講義",
+    description: "國中數學講義版型；依講義規範套用頁面、頁首頁尾、題型與答案格式。",
+  },
+];
 
 const modes = [
   {
@@ -235,22 +273,12 @@ const modes = [
     loadingTitle: "OCR 解析中",
   },
   {
-    value: "local-proofread",
-    icon: "⚡",
-    title: "數學快速檢查",
-    description: "免費內建數學詞庫，不使用 AI。",
-    actionTitle: "開始數學快速檢查",
-    loadingTitle: "檢查中",
-    disabled: true,
-  },
-  {
-    value: "ai-proofread",
-    icon: "AI",
-    title: "AI 不分科檢查",
-    description: "依上下文檢查各類文件錯字。",
-    actionTitle: "開始 AI 不分科檢查",
-    loadingTitle: "AI 檢查中",
-    disabled: true,
+    value: "word-template",
+    icon: "DOCX",
+    title: "Word 模板排版",
+    description: "解析 DOCX 題目，選 Teams 或國中講義模板後產生 Word。",
+    actionTitle: "解析 Word",
+    loadingTitle: "Word 解析中",
   },
 ];
 
@@ -267,15 +295,40 @@ const dragOver = ref(false);
 const expandedEditor = ref(null);
 const copyMessage = ref("");
 const aiQuota = ref(getDailyAiRequestQuota());
-const proofreadResult = ref(null);
+const wordTemplates = ref(FALLBACK_WORD_TEMPLATES);
+const selectedWordTemplateId = ref("teams_conversion");
+const templatesLoading = ref(false);
+const wordDocument = ref(null);
+const wordOutputFilename = ref("questions-排版.docx");
 
+const isWordMode = computed(() => mode.value === "word-template");
+const isBusy = computed(() => status.value === "loading" || status.value === "generating");
 const selectedMode = computed(
   () => modes.find((item) => item.value === mode.value) || modes[0],
 );
+const selectedWordTemplate = computed(
+  () =>
+    wordTemplates.value.find((template) => template.id === selectedWordTemplateId.value) ||
+    FALLBACK_WORD_TEMPLATES[0],
+);
+const wordStats = computed(() => {
+  const document = wordDocument.value;
+  if (!document) return { sections: 0, questions: 0, assets: 0 };
+
+  return {
+    sections: document.sections?.length || 0,
+    questions:
+      document.sections?.reduce(
+        (total, section) => total + (section.questions?.length || 0),
+        0,
+      ) || 0,
+    assets: document.assets?.length || 0,
+  };
+});
 const editorConfig = computed(() => {
   if (expandedEditor.value === "text") {
     return {
-      title: "解析文字",
+      title: isWordMode.value ? "Word 結構化 JSON" : "解析文字",
       value: text.value,
       onChange: (value) => {
         text.value = value;
@@ -302,12 +355,34 @@ onMounted(() => {
   window.addEventListener("document-processing-quota-change", syncAiQuota);
   window.addEventListener("storage", syncAiQuota);
   showReleaseAnnouncementIfNeeded();
+  loadWordTemplates();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("document-processing-quota-change", syncAiQuota);
   window.removeEventListener("storage", syncAiQuota);
 });
+
+function switchMode(value) {
+  mode.value = value;
+  status.value = "idle";
+  message.value = "";
+  diagnostics.value = null;
+}
+
+async function loadWordTemplates() {
+  templatesLoading.value = true;
+  const result = await fetchWordTemplates();
+  if (result.success && result.templates?.length) {
+    wordTemplates.value = result.templates;
+    selectedWordTemplateId.value = result.templates.some(
+      (template) => template.id === result.defaultTemplateId,
+    )
+      ? result.defaultTemplateId
+      : result.templates[0].id;
+  }
+  templatesLoading.value = false;
+}
 
 function handleFile(selectedFile) {
   if (!selectedFile) return;
@@ -317,37 +392,10 @@ function handleFile(selectedFile) {
   message.value = "";
   diagnostics.value = null;
   status.value = "idle";
-  proofreadResult.value = null;
-}
+  wordDocument.value = null;
 
-function isProofreadFile(selectedFile) {
-  return /\.(docx|txt)$/i.test(selectedFile?.name || "");
-}
-
-async function handleProofread(engine) {
-  if (!file.value) {
-    status.value = "error";
-    message.value = "請先選擇 Word 或 TXT 檔案。";
-    return;
-  }
-  if (!isProofreadFile(file.value)) {
-    status.value = "error";
-    message.value = "錯字檢查目前只支援 DOCX 或 TXT 檔案。";
-    return;
-  }
-
-  status.value = "loading";
-  message.value = engine === "ai" ? "AI 正在進行不分科檢查..." : "正在進行數學快速檢查...";
-  const result = await proofreadDocument({ file: file.value, engine });
-
-  if (result.success) {
-    proofreadResult.value = result;
-    text.value = result.original_text || "";
-    status.value = "success";
-    message.value = `檢查完成，共找到 ${result.summary?.issue_count ?? result.issues?.length ?? 0} 處。`;
-  } else {
-    status.value = "error";
-    message.value = result.error || "錯字檢查失敗，請稍後再試。";
+  if (selectedFile.name?.toLowerCase().endsWith(".docx")) {
+    wordOutputFilename.value = `${selectedFile.name.replace(/\.docx$/i, "")}-排版.docx`;
   }
 }
 
@@ -408,16 +456,70 @@ async function handleExtract() {
     result.error || "沒有抽到文字。這份檔案可能需要 OCR / AI 精準模式。";
 }
 
-function handleSelectedMode() {
-  if (mode.value === "local-proofread") {
-    handleProofread("local");
+async function handleWordParse() {
+  if (!file.value) {
+    status.value = "error";
+    message.value = "請先選擇 Word 檔案。";
     return;
   }
-  if (mode.value === "ai-proofread") {
-    handleProofread("ai");
+  if (!file.value.name?.toLowerCase().endsWith(".docx")) {
+    status.value = "error";
+    message.value = "Word 模板排版只支援 .docx 檔案。";
+    return;
+  }
+
+  status.value = "loading";
+  message.value = "正在解析 Word 題目、表格與圖片...";
+  const result = await parseWordDocument({ file: file.value, includeAssets: true });
+
+  if (result.success) {
+    wordDocument.value = result.document;
+    text.value = JSON.stringify(result.document, null, 2);
+    status.value = "success";
+    message.value = "Word 解析完成，可校正 JSON 後產生排版檔。";
+    return;
+  }
+
+  status.value = "error";
+  message.value = result.error || "Word 文件解析失敗。";
+}
+
+function handleSelectedMode() {
+  if (isWordMode.value) {
+    handleWordParse();
     return;
   }
   handleExtract();
+}
+
+async function handleGenerateWord() {
+  let documentPayload;
+  try {
+    documentPayload = JSON.parse(text.value);
+  } catch {
+    status.value = "error";
+    message.value = "JSON 格式不正確，請修正後再產生 Word。";
+    return;
+  }
+
+  status.value = "generating";
+  message.value = "正在套用模板並產生 Word...";
+  const result = await generateWordDocument({
+    document: documentPayload,
+    filename: ensureDocxFilename(wordOutputFilename.value),
+    templateId: selectedWordTemplateId.value,
+  });
+
+  if (result.success) {
+    wordDocument.value = documentPayload;
+    downloadBlob(result.blob, result.filename || ensureDocxFilename(wordOutputFilename.value));
+    status.value = "success";
+    message.value = "Word 已產生並開始下載。";
+    return;
+  }
+
+  status.value = "error";
+  message.value = result.error || "Word 產生失敗。";
 }
 
 async function handleBuildSolution() {
@@ -473,6 +575,22 @@ async function copyText(value) {
   } catch {
     showCopyMessage("複製失敗");
   }
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ensureDocxFilename(value) {
+  const filename = (value || "questions-排版.docx").trim();
+  return filename.toLowerCase().endsWith(".docx") ? filename : `${filename}.docx`;
 }
 
 function showCopyMessage(value) {

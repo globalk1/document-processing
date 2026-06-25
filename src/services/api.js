@@ -100,44 +100,113 @@ export async function processAiText({ text }) {
   }
 }
 
-export async function proofreadDocument({ file, engine = "local" }) {
-  if (engine === "ai") {
-    const quota = consumeDailyAiRequest();
-    if (!quota.allowed) {
+export async function fetchWordTemplates() {
+  try {
+    const response = await fetch(`${API_URL}/word/templates/`, {
+      headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
+    });
+    const result = await parseJson(response);
+
+    if (response.ok && result.success) {
       return {
-        success: false,
-        code: "daily_ai_request_limit",
-        error: `今日 AI 請求已達 ${quota.limit} 次上限，請明天再試。`,
-        status: 429,
+        success: true,
+        templates: result.templates || [],
+        defaultTemplateId: result.default_template_id || "teams_conversion",
       };
     }
-  }
 
+    return {
+      success: false,
+      error: getAuthError(response, result, "無法取得 Word 模板"),
+      status: response.status,
+    };
+  } catch (error) {
+    console.error("fetchWordTemplates failed", error);
+    return { success: false, error: "Word 模板請求失敗", status: 0 };
+  }
+}
+
+export async function parseWordDocument({ file, includeAssets = true }) {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("language", "zh-TW");
-  const endpoint = engine === "ai" ? "/ai/proofread/" : "/proofread/local/";
+  formData.append("include_assets", includeAssets ? "true" : "false");
 
   try {
-    const response = await fetch(`${API_URL}${endpoint}`, {
+    const response = await fetch(`${API_URL}/word/parse/`, {
       method: "POST",
       headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
       body: formData,
     });
     const result = await parseJson(response);
 
-    if (response.ok && result.success) {
-      return { success: true, ...result };
+    if (response.ok && result.success && result.document) {
+      return { success: true, document: result.document };
     }
 
     return {
       success: false,
-      error: getAuthError(response, result, "錯字檢查失敗"),
+      error: getAuthError(response, result, "Word 文件解析失敗"),
       code: result.code,
       status: response.status,
     };
   } catch (error) {
-    console.error("proofreadDocument failed", error);
-    return { success: false, error: "錯字檢查請求失敗", status: 0 };
+    console.error("parseWordDocument failed", error);
+    return { success: false, error: "Word 解析請求失敗", status: 0 };
   }
+}
+
+export async function generateWordDocument({
+  document,
+  filename = "questions.docx",
+  templateId = "teams_conversion",
+}) {
+  try {
+    const response = await fetch(`${API_URL}/word/generate/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-KEY": DOCUMENT_PROCESSING_API_KEY,
+      },
+      body: JSON.stringify({
+        document,
+        filename,
+        template_id: templateId,
+      }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      return {
+        success: true,
+        blob,
+        filename: getDownloadFilename(response, filename),
+      };
+    }
+
+    const result = await parseJson(response);
+    return {
+      success: false,
+      error: getAuthError(response, result, "Word 文件產生失敗"),
+      code: result.code,
+      status: response.status,
+    };
+  } catch (error) {
+    console.error("generateWordDocument failed", error);
+    return { success: false, error: "Word 產生請求失敗", status: 0 };
+  }
+}
+
+function getDownloadFilename(response, fallback) {
+  const disposition = response.headers.get("content-disposition") || "";
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return filenameMatch?.[1] || fallback;
 }
