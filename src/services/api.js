@@ -160,6 +160,16 @@ export async function generateWordDocument({
   filename = "questions.docx",
   templateId = "teams_conversion",
 }) {
+  const quota = consumeDailyAiRequest();
+  if (!quota.allowed) {
+    return {
+      success: false,
+      code: "daily_ai_request_limit",
+      error: `今日 AI 請求已達 ${quota.limit} 次上限，請明天再試。`,
+      status: 429,
+    };
+  }
+
   try {
     const response = await fetch(`${API_URL}/word/generate/`, {
       method: "POST",

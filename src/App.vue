@@ -7,7 +7,9 @@
       </div>
       <div class="header-actions">
         <span class="app-version">v{{ APP_VERSION }}</span>
-        <span class="status-pill" :class="status">{{ selectedMode.title }}</span>
+        <span class="status-pill" :class="status">{{
+          selectedMode.title
+        }}</span>
       </div>
     </header>
 
@@ -46,7 +48,11 @@
             </option>
           </select>
           <p class="template-description">
-            {{ templatesLoading ? "正在取得模板..." : selectedWordTemplate.description }}
+            {{
+              templatesLoading
+                ? "正在取得模板..."
+                : selectedWordTemplate.description
+            }}
           </p>
 
           <label class="field-label" for="word-output-filename">下載檔名</label>
@@ -71,7 +77,9 @@
           <div class="file-icon">▣</div>
           <strong>{{ file ? file.name : "選擇或拖拉 PDF、圖片、Word" }}</strong>
           <span>{{
-            file ? `${Math.ceil(file.size / 1024)} KB` : "PDF、JPG、PNG、WEBP、DOCX"
+            file
+              ? `${Math.ceil(file.size / 1024)} KB`
+              : "PDF、JPG、PNG、WEBP、DOCX"
           }}</span>
           <input
             ref="fileInput"
@@ -91,9 +99,9 @@
           {{ isBusy ? selectedMode.loadingTitle : selectedMode.actionTitle }}
         </button>
 
-        <p v-if="!isWordMode" class="quota-note">
-          今日 AI 請求：已用 {{ aiQuota.used }} / {{ aiQuota.limit }}，
-          剩餘 {{ aiQuota.remaining }} 次
+        <p class="quota-note">
+          今日 AI 請求：已用 {{ aiQuota.used }} / {{ aiQuota.limit }}， 剩餘
+          {{ aiQuota.remaining }} 次
         </p>
         <p v-if="message" class="message" :class="status">{{ message }}</p>
         <div v-if="diagnostics" class="diagnostics">
@@ -107,7 +115,9 @@
 
       <section class="output-panel">
         <div class="panel-header">
-          <h2 class="section-title">{{ isWordMode ? "Word Markdown" : "文件文字" }}</h2>
+          <h2 class="section-title">
+            {{ isWordMode ? "Word Markdown" : "文件文字" }}
+          </h2>
           <div class="icon-group">
             <button
               class="icon-button"
@@ -134,14 +144,15 @@
           <textarea
             v-model="text"
             class="textarea"
-            :placeholder="isWordMode ? '解析後的 Markdown 會出現在這裡。Word 產生會使用後端解析出的結構資料。' : '解析後的文字會出現在這裡。'"
+            :placeholder="
+              isWordMode
+                ? '解析後的 Markdown 會出現在這裡。Word 產生會使用後端解析出的結構資料。'
+                : '解析後的文字會出現在這裡。'
+            "
           ></textarea>
         </div>
 
-        <MathMarkdownPreview
-          v-if="isWordMode && text.trim()"
-          :content="text"
-        />
+        <MathMarkdownPreview v-if="isWordMode && text.trim()" :content="text" />
 
         <section v-if="isWordMode" class="word-result-panel">
           <div class="word-stats">
@@ -252,12 +263,14 @@ const FALLBACK_WORD_TEMPLATES = [
   {
     id: "teams_conversion",
     name: "Teams 轉換",
-    description: "Teams 轉換版型；標題只保留 CH 單元，每一行採 1.5 倍行距且不產生 bullet。",
+    description:
+      "Teams 轉換版型；標題只保留 CH 單元，每一行採 1.5 倍行距且不產生 bullet。",
   },
   {
     id: "junior_math_handout",
     name: "國中數學講義",
-    description: "國中數學講義版型；依講義規範套用頁面、頁首頁尾、題型與答案格式。",
+    description:
+      "國中數學講義版型；依講義規範套用頁面、頁首頁尾、題型與答案格式。",
   },
 ];
 
@@ -282,7 +295,7 @@ const modes = [
     value: "word-template",
     icon: "DOCX",
     title: "Word 模板排版",
-    description: "解析 DOCX 題目，選 Teams 或國中講義模板後產生 Word。",
+    description: "解析 DOCX 題目，選 Teams模板 或國中講義模板後產生 Word",
     actionTitle: "解析 Word",
     loadingTitle: "Word 解析中",
   },
@@ -308,14 +321,17 @@ const wordDocument = ref(null);
 const wordOutputFilename = ref("questions-排版.docx");
 
 const isWordMode = computed(() => mode.value === "word-template");
-const isBusy = computed(() => status.value === "loading" || status.value === "generating");
+const isBusy = computed(
+  () => status.value === "loading" || status.value === "generating",
+);
 const selectedMode = computed(
   () => modes.find((item) => item.value === mode.value) || modes[0],
 );
 const selectedWordTemplate = computed(
   () =>
-    wordTemplates.value.find((template) => template.id === selectedWordTemplateId.value) ||
-    FALLBACK_WORD_TEMPLATES[0],
+    wordTemplates.value.find(
+      (template) => template.id === selectedWordTemplateId.value,
+    ) || FALLBACK_WORD_TEMPLATES[0],
 );
 const wordStats = computed(() => {
   const document = wordDocument.value;
@@ -476,13 +492,17 @@ async function handleWordParse() {
 
   status.value = "loading";
   message.value = "正在解析 Word 題目、表格與圖片...";
-  const result = await parseWordDocument({ file: file.value, includeAssets: true });
+  const result = await parseWordDocument({
+    file: file.value,
+    includeAssets: true,
+  });
 
   if (result.success) {
     wordDocument.value = result.document;
     text.value = buildWordMarkdown(result.document);
     status.value = "success";
-    message.value = "Word 解析完成，已轉成 Markdown 預覽；產生 Word 會使用解析後的結構資料。";
+    message.value =
+      "Word 解析完成，已轉成 Markdown 預覽；產生 Word 會使用解析後的結構資料。";
     return;
   }
 
@@ -525,7 +545,10 @@ function buildWordMarkdown(document) {
     }
   }
 
-  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return lines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function questionToMarkdown(question) {
@@ -568,7 +591,7 @@ async function handleGenerateWord() {
   }
 
   status.value = "generating";
-  message.value = "正在套用模板並產生 Word...";
+  message.value = "正在套用模板並產生 Word...（會計入 1 次 AI 請求）";
   const result = await generateWordDocument({
     document: documentPayload,
     filename: ensureDocxFilename(wordOutputFilename.value),
@@ -577,7 +600,10 @@ async function handleGenerateWord() {
 
   if (result.success) {
     wordDocument.value = documentPayload;
-    downloadBlob(result.blob, result.filename || ensureDocxFilename(wordOutputFilename.value));
+    downloadBlob(
+      result.blob,
+      result.filename || ensureDocxFilename(wordOutputFilename.value),
+    );
     status.value = "success";
     message.value = "Word 已產生並開始下載。";
     return;
@@ -655,7 +681,9 @@ function downloadBlob(blob, filename) {
 
 function ensureDocxFilename(value) {
   const filename = (value || "questions-排版.docx").trim();
-  return filename.toLowerCase().endsWith(".docx") ? filename : `${filename}.docx`;
+  return filename.toLowerCase().endsWith(".docx")
+    ? filename
+    : `${filename}.docx`;
 }
 
 function showCopyMessage(value) {
