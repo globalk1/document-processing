@@ -107,11 +107,11 @@
 
       <section class="output-panel">
         <div class="panel-header">
-          <h2 class="section-title">{{ isWordMode ? "Word 結構化資料" : "文件文字" }}</h2>
+          <h2 class="section-title">{{ isWordMode ? "Word Markdown" : "文件文字" }}</h2>
           <div class="icon-group">
             <button
               class="icon-button"
-              :title="isWordMode ? '放大 JSON' : '放大解析文字'"
+              :title="isWordMode ? '放大 Markdown' : '放大解析文字'"
               type="button"
               @click="text.trim() && openEditor('text')"
             >
@@ -119,7 +119,7 @@
             </button>
             <button
               class="icon-button"
-              :title="isWordMode ? '複製 JSON' : '複製解析文字'"
+              :title="isWordMode ? '複製 Markdown' : '複製解析文字'"
               type="button"
               @click="copyText(text)"
             >
@@ -134,9 +134,14 @@
           <textarea
             v-model="text"
             class="textarea"
-            :placeholder="isWordMode ? '解析後的題目 JSON 會出現在這裡，可校正後再產生 Word。' : '解析後的文字會出現在這裡。'"
+            :placeholder="isWordMode ? '解析後的 Markdown 會出現在這裡。Word 產生會使用後端解析出的結構資料。' : '解析後的文字會出現在這裡。'"
           ></textarea>
         </div>
+
+        <MathMarkdownPreview
+          v-if="isWordMode && text.trim()"
+          :content="text"
+        />
 
         <section v-if="isWordMode" class="word-result-panel">
           <div class="word-stats">
@@ -223,6 +228,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
+import MathMarkdownPreview from "./components/MathMarkdownPreview.vue";
 import SolutionReview from "./components/SolutionReview.vue";
 import {
   extractPdfText,
@@ -328,7 +334,7 @@ const wordStats = computed(() => {
 const editorConfig = computed(() => {
   if (expandedEditor.value === "text") {
     return {
-      title: isWordMode.value ? "Word 結構化 JSON" : "解析文字",
+      title: isWordMode.value ? "Word Markdown" : "解析文字",
       value: text.value,
       onChange: (value) => {
         text.value = value;
@@ -474,9 +480,9 @@ async function handleWordParse() {
 
   if (result.success) {
     wordDocument.value = result.document;
-    text.value = JSON.stringify(result.document, null, 2);
+    text.value = buildWordMarkdown(result.document);
     status.value = "success";
-    message.value = "Word 解析完成，可校正 JSON 後產生排版檔。";
+    message.value = "Word 解析完成，已轉成 Markdown 預覽；產生 Word 會使用解析後的結構資料。";
     return;
   }
 
@@ -492,13 +498,72 @@ function handleSelectedMode() {
   handleExtract();
 }
 
+function buildWordMarkdown(document) {
+  if (!document) return "";
+
+  const lines = [];
+  if (document.title) {
+    lines.push(`# ${document.title}`, "");
+  }
+
+  for (const section of document.sections || []) {
+    if (section.title) {
+      lines.push(`## ${section.title}`, "");
+    }
+    for (const instruction of section.instructions || []) {
+      lines.push(`> ${instruction}`, "");
+    }
+    for (const question of section.questions || []) {
+      lines.push(...questionToMarkdown(question));
+    }
+  }
+
+  if (document.unassigned_content?.length) {
+    lines.push("## 其他內容", "");
+    for (const block of document.unassigned_content) {
+      if (block.text) lines.push(block.text, "");
+    }
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function questionToMarkdown(question) {
+  const lines = [];
+  const answer = question.answer ? `（答案：${question.answer}）` : "";
+  const number = question.number || "";
+  lines.push(`### 第 ${number} 題 ${answer}`.trim(), "");
+  if (question.stem) lines.push(question.stem, "");
+
+  for (const block of question.shared_context || []) {
+    if (block.text) lines.push(block.text, "");
+  }
+
+  for (const option of question.options || []) {
+    lines.push(`- (${option.label || ""}) ${option.text || ""}`.trim());
+  }
+  if (question.options?.length) lines.push("");
+
+  for (const block of question.content_blocks || []) {
+    if (block.text) lines.push(block.text, "");
+  }
+
+  if (question.solution?.length) {
+    lines.push("**詳解**", "");
+    for (const line of question.solution) {
+      lines.push(line);
+    }
+    lines.push("");
+  }
+
+  return lines;
+}
+
 async function handleGenerateWord() {
-  let documentPayload;
-  try {
-    documentPayload = JSON.parse(text.value);
-  } catch {
+  const documentPayload = wordDocument.value;
+  if (!documentPayload) {
     status.value = "error";
-    message.value = "JSON 格式不正確，請修正後再產生 Word。";
+    message.value = "請先解析 Word，再套用模板產生檔案。";
     return;
   }
 

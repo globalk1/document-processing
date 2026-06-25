@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.0.1";
+export const APP_VERSION = "1.1.0";
 
 const STORAGE_KEY = "huanyu-document-processing-seen-version";
 const SWEETALERT_SCRIPT_URL =
@@ -7,9 +7,10 @@ const SWEETALERT_STYLE_URL =
   "https://cdn.jsdelivr.net/npm/sweetalert2@11.26.24/dist/sweetalert2.min.css";
 
 const RELEASE_NOTES = [
-  "PDF 最多 20 頁，避免產生過高的 AI 使用費。",
-  "每日最多 70 次 AI 請求，畫面會顯示剩餘額度。",
-  "數學 LaTeX 文字改為原樣顯示，不再改寫指數與公式。",
+  "新增 Word 模板排版模式，可選 Teams 轉換或國中數學講義模板。",
+  "Word 解析結果改以 Markdown 顯示，不再顯示 JSON。",
+  "Markdown 預覽支援 KaTeX 顯示數字與數學式，且預覽區改為固定高度捲動。",
+  "移除錯字檢查模式，保留 PDF / OCR 解析與 AI 寫詳解流程。",
 ];
 
 let sweetAlertPromise;
