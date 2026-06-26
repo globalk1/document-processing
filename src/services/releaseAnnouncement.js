@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.1.1";
+export const APP_VERSION = "1.1.2";
 
 const STORAGE_KEY = "huanyu-document-processing-seen-version";
 const SWEETALERT_SCRIPT_URL =

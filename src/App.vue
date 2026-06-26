@@ -32,6 +32,10 @@
         </div>
 
         <section v-if="isWordMode" class="template-panel">
+          <div v-if="wordGenerationMaintenance" class="maintenance-notice">
+            {{ WORD_GENERATION_MAINTENANCE_NOTICE }}
+          </div>
+
           <label class="field-label" for="word-template">輸出模板</label>
           <select
             id="word-template"
@@ -171,11 +175,19 @@
           </div>
           <button
             class="primary-inline-button"
-            :disabled="!text.trim() || status === 'generating'"
+            :disabled="
+              !text.trim() || status === 'generating' || wordGenerationMaintenance
+            "
             type="button"
             @click="handleGenerateWord"
           >
-            {{ status === "generating" ? "產生中" : "套用模板並下載 Word" }}
+            {{
+              wordGenerationMaintenance
+                ? "Word API 維護中"
+                : status === "generating"
+                  ? "產生中"
+                  : "套用模板並下載 Word"
+            }}
           </button>
         </section>
 
@@ -242,9 +254,11 @@ import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
 import MathMarkdownPreview from "./components/MathMarkdownPreview.vue";
 import SolutionReview from "./components/SolutionReview.vue";
 import {
+  WORD_GENERATION_MAINTENANCE_NOTICE,
   extractPdfText,
   fetchWordTemplates,
   generateWordDocument,
+  isWordGenerationUnderMaintenance,
   parseWordDocument,
   processAiText,
 } from "./services/api";
@@ -319,6 +333,7 @@ const selectedWordTemplateId = ref("teams_conversion");
 const templatesLoading = ref(false);
 const wordDocument = ref(null);
 const wordOutputFilename = ref("questions-排版.docx");
+const wordGenerationMaintenance = isWordGenerationUnderMaintenance();
 
 const isWordMode = computed(() => mode.value === "word-template");
 const isBusy = computed(
@@ -587,6 +602,11 @@ async function handleGenerateWord() {
   if (!documentPayload) {
     status.value = "error";
     message.value = "請先解析 Word，再套用模板產生檔案。";
+    return;
+  }
+  if (wordGenerationMaintenance) {
+    status.value = "maintenance";
+    message.value = WORD_GENERATION_MAINTENANCE_NOTICE;
     return;
   }
 

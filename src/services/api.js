@@ -7,6 +7,11 @@ const API_URL =
     : "http://127.0.0.1:8000/api");
 const DOCUMENT_PROCESSING_API_KEY = "huanyu-document-processing-colleague-key";
 
+export const WORD_GENERATION_MAINTENANCE_NOTICE =
+  "Teams 版面近期大幅調整，Word 模板建立 API 維護中；請先使用 Markdown 預覽內容，待維護完成後再產生 Word。";
+
+export const isWordGenerationUnderMaintenance = () => true;
+
 async function parseJson(response) {
   try {
     return await response.json();
@@ -160,6 +165,15 @@ export async function generateWordDocument({
   filename = "questions.docx",
   templateId = "teams_conversion",
 }) {
+  if (isWordGenerationUnderMaintenance()) {
+    return {
+      success: false,
+      code: "word_generation_maintenance",
+      error: WORD_GENERATION_MAINTENANCE_NOTICE,
+      status: 503,
+    };
+  }
+
   const quota = consumeDailyAiRequest();
   if (!quota.allowed) {
     return {

@@ -320,6 +320,16 @@ h1 {
   line-height: 1.5;
 }
 
+.maintenance-notice {
+  border: 1px solid #e4c680;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff8e7;
+  color: #6b4b08;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .word-result-panel {
   margin-bottom: 0;
 }
@@ -395,6 +405,10 @@ h1 {
 
 .message.error {
   color: #b3261e;
+}
+
+.message.maintenance {
+  color: #7a4f00;
 }
 
 .diagnostics {
