@@ -1,5 +1,3 @@
-import { getDailyAiRequestQuota } from "./dailyRequestQuota";
-
 const PDF_LIB_URL =
   "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
 const MAX_PDF_PAGES = 20;
@@ -115,18 +113,6 @@ export async function extractAccuratePdfInPages({
       return {
         success: false,
         error: `PDF 共 ${totalPages} 頁，目前最多支援 ${MAX_PDF_PAGES} 頁。`,
-      };
-    }
-
-    const quota = getDailyAiRequestQuota();
-    if (quota.remaining < totalPages) {
-      return {
-        success: false,
-        code: "daily_ai_request_limit",
-        error:
-          `PDF 共 ${totalPages} 頁，但今日只剩 ${quota.remaining} 次 AI 請求額度。` +
-          "請改用較少頁數的檔案或明天再試。",
-        status: 429,
       };
     }
 

@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.1.2";
+export const APP_VERSION = "1.2.0";
 
 const STORAGE_KEY = "huanyu-document-processing-seen-version";
 const SWEETALERT_SCRIPT_URL =
@@ -7,11 +7,10 @@ const SWEETALERT_STYLE_URL =
   "https://cdn.jsdelivr.net/npm/sweetalert2@11.26.24/dist/sweetalert2.min.css";
 
 const RELEASE_NOTES = [
-  "新增 Word 模板排版模式，可選 Teams 轉換或國中數學講義模板。",
-  "Word 模板排版下載也會計入每日 AI 請求次數。",
-  "Word 解析結果改以 Markdown 顯示，不再顯示 JSON。",
-  "Markdown 預覽支援 KaTeX 顯示數字與數學式，且預覽區改為固定高度捲動。",
-  "移除錯字檢查模式，保留 PDF / OCR 解析與 AI 寫詳解流程。",
+  "移除 Word 排版與 DOCX 下載流程。",
+  "圖片/PDF 轉文字合併成單一入口，會先嘗試免費解析再自動改用 AI / OCR。",
+  "移除每日 AI 請求次數限制。",
+  "重新設計題庫挑題介面，改為篩選、勾選與複製選題內容。",
 ];
 
 let sweetAlertPromise;
