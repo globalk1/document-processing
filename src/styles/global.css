@@ -458,6 +458,20 @@ h1 {
   font-weight: 850;
 }
 
+.selection-action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.selection-hint {
+  color: #cfd2d6;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .selection-panel .primary-button {
   border-color: #fff;
   background: #fff;
@@ -852,7 +866,8 @@ h1 {
   }
 
   .filter-grid.two,
-  .download-button-grid {
+  .download-button-grid,
+  .selection-action-grid {
     grid-template-columns: 1fr;
   }
 

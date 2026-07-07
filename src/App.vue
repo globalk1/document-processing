@@ -158,10 +158,27 @@
               class="primary-button full"
               :disabled="!selectedMathBankQuestions.length"
               type="button"
+              @click="downloadSelectedQuestionsJson"
+            >
+              下載選題 JSON
+            </button>
+            <button
+              class="secondary-button full"
+              :disabled="!selectedMathBankQuestions.length"
+              type="button"
               @click="copySelectedQuestions"
             >
               複製選題內容
             </button>
+            <div class="selection-action-grid">
+              <button class="secondary-button full" disabled type="button">
+                生成講義
+              </button>
+              <button class="secondary-button full" disabled type="button">
+                生成考卷
+              </button>
+            </div>
+            <span class="selection-hint">講義與考卷生成功能尚未實作</span>
             <button
               class="secondary-button full"
               :disabled="!selectedMathBankQuestions.length"
@@ -1001,6 +1018,45 @@ async function copySelectedQuestions() {
     selectedMathBankQuestionIds.value.map((id) => ensureMathBankQuestionDetail(id)),
   );
   copyText(buildSelectedQuestionsText());
+}
+
+function toQuestionJsonPayload(question) {
+  return {
+    grade_id: question.grade?.id || question.grade_id || "",
+    unit_id: question.unit?.id || question.unit_id || "",
+    type: question.type || "calculation",
+    difficulty: question.difficulty || "A",
+    prompt_md: question.prompt_md || "",
+    answer_md: question.answer_md || "",
+    solution_md: question.solution_md || "",
+    status: question.status || "draft",
+    visibility: question.visibility || "public",
+    thinking: Array.isArray(question.thinking)
+      ? question.thinking
+      : formatQuestionThinking(question.thinking)
+        ? [formatQuestionThinking(question.thinking)]
+        : [],
+    assets: question.assets || [],
+  };
+}
+
+async function downloadSelectedQuestionsJson() {
+  if (!requireStaffApiKey()) return;
+  if (!selectedMathBankQuestionIds.value.length) {
+    status.value = "error";
+    message.value = "請先選擇題目。";
+    return;
+  }
+
+  await Promise.all(
+    selectedMathBankQuestionIds.value.map((id) => ensureMathBankQuestionDetail(id)),
+  );
+  const payload = {
+    questions: selectedMathBankQuestions.value.map(toQuestionJsonPayload),
+  };
+  downloadJson(payload, "selected-math-bank-questions.json");
+  status.value = "success";
+  message.value = `已下載 ${payload.questions.length} 題選題 JSON。`;
 }
 
 function triggerDownload(content, filename, type) {
