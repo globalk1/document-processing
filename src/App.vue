@@ -3,7 +3,7 @@
     <header class="app-header">
       <div class="title-group">
         <div class="eyebrow">寰宇教育-教務部內部使用</div>
-        <h1>題庫 JSON 工具</h1>
+        <h1>文件解析工具</h1>
       </div>
       <div class="header-actions">
         <span class="app-version">v{{ APP_VERSION }}</span>
@@ -205,6 +205,25 @@
           >
             {{ isBusy ? selectedMode.loadingTitle : selectedMode.actionTitle }}
           </button>
+
+          <div class="download-button-grid">
+            <button
+              class="secondary-button full"
+              :disabled="!text.trim()"
+              type="button"
+              @click="downloadTextFile('txt')"
+            >
+              下載 TXT
+            </button>
+            <button
+              class="secondary-button full"
+              :disabled="!text.trim()"
+              type="button"
+              @click="downloadTextFile('md')"
+            >
+              下載 Markdown
+            </button>
+          </div>
 
           <p v-if="message" class="message" :class="status">{{ message }}</p>
           <div v-if="diagnostics" class="diagnostics">
@@ -557,10 +576,10 @@ import {
 const modes = [
   {
     value: "text-extract",
-    icon: "JSON",
-    title: "文件轉 JSON",
-    description: "上傳 PDF 或圖片後轉成題庫 JSON。",
-    actionTitle: "開始解析",
+    icon: "TXT",
+    title: "圖片/PDF 轉文字",
+    description: "上傳 PDF 或圖片後轉成文字，可再下載題庫 JSON。",
+    actionTitle: "開始轉文字",
     loadingTitle: "解析中",
   },
   {
@@ -984,10 +1003,8 @@ async function copySelectedQuestions() {
   copyText(buildSelectedQuestionsText());
 }
 
-function downloadJson(payload, filename) {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: "application/json;charset=utf-8",
-  });
+function triggerDownload(content, filename, type) {
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -996,6 +1013,35 @@ function downloadJson(payload, filename) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function downloadJson(payload, filename) {
+  triggerDownload(
+    JSON.stringify(payload, null, 2),
+    filename,
+    "application/json;charset=utf-8",
+  );
+}
+
+function downloadTextFile(format) {
+  const content = text.value.trim();
+  if (!content) {
+    status.value = "error";
+    message.value = "請先有解析文字。";
+    return;
+  }
+
+  const baseName = file.value?.name
+    ? file.value.name.replace(/\.[^.]+$/, "")
+    : "extracted-text";
+  const extension = format === "md" ? "md" : "txt";
+  const mimeType = format === "md"
+    ? "text/markdown;charset=utf-8"
+    : "text/plain;charset=utf-8";
+
+  triggerDownload(content, `${baseName}.${extension}`, mimeType);
+  status.value = "success";
+  message.value = `已下載 ${extension.toUpperCase()} 文字檔。`;
 }
 
 async function downloadMathBankJson() {

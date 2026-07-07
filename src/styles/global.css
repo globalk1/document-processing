@@ -311,6 +311,12 @@ h1 {
   width: 100%;
 }
 
+.download-button-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .ghost-button.compact {
   min-height: 34px;
   padding: 0 10px;
@@ -845,7 +851,8 @@ h1 {
     min-height: 136px;
   }
 
-  .filter-grid.two {
+  .filter-grid.two,
+  .download-button-grid {
     grid-template-columns: 1fr;
   }
 
