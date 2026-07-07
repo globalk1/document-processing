@@ -27,7 +27,7 @@ button {
 }
 
 .page-shell {
-  width: min(1440px, calc(100vw - 40px));
+  width: min(1180px, calc(100vw - 40px));
   margin: 24px auto 56px;
 }
 
@@ -143,13 +143,13 @@ h1 {
 
 .workspace {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
 
 .workspace.question-bank-workspace {
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 320px minmax(0, 1fr);
 }
 
 .workspace.api-guide-workspace {
@@ -653,6 +653,37 @@ h1 {
   line-height: 1.65;
 }
 
+.api-config-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.85fr) minmax(320px, 1.15fr);
+  gap: 12px;
+}
+
+.api-key-field {
+  display: grid;
+  gap: 6px;
+  color: #30343a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.api-key-field input {
+  min-height: 42px;
+  border: 1px solid #d5d7db;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: #202124;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.api-key-field input:focus {
+  outline: 2px solid rgba(32, 33, 36, 0.12);
+  border-color: #202124;
+}
+
 .api-step-list {
   display: grid;
   gap: 6px;
@@ -761,7 +792,8 @@ h1 {
     grid-template-columns: 1fr;
   }
 
-  .api-code-grid {
+  .api-code-grid,
+  .api-config-grid {
     grid-template-columns: 1fr;
   }
 }

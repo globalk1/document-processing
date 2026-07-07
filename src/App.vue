@@ -35,6 +35,19 @@
       <aside v-if="!isApiGuideMode" class="control-panel">
         <template v-if="isQuestionBankMode">
           <section class="filter-panel">
+            <label class="api-key-field">
+              <span>Staff API Key</span>
+              <input
+                v-model="staffApiKey"
+                autocomplete="off"
+                spellcheck="false"
+                type="password"
+                placeholder="請輸入 staff API key"
+              />
+            </label>
+          </section>
+
+          <section class="filter-panel">
             <div class="filter-panel-header">
               <h2 class="section-title">篩選題目</h2>
               <button
@@ -271,9 +284,31 @@
               <span class="api-guide-badge">遇到重複題預設略過</span>
             </div>
 
+            <div class="api-config-grid">
+              <label class="api-key-field">
+                <span>Staff API Key</span>
+                <input
+                  v-model="staffApiKey"
+                  autocomplete="off"
+                  spellcheck="false"
+                  type="password"
+                  placeholder="請輸入 staff API key"
+                />
+              </label>
+              <label class="api-key-field">
+                <span>API URL</span>
+                <input
+                  v-model="staffApiUrl"
+                  autocomplete="off"
+                  spellcheck="false"
+                  type="text"
+                />
+              </label>
+            </div>
+
             <ol class="api-step-list">
+              <li>輸入 Staff API Key。</li>
               <li>把 JSON 檔放在要執行指令的資料夾，檔名維持 `math-bank-questions.json`。</li>
-              <li>確認後端可以連到 `http://localhost:8000`。</li>
               <li>進度列會顯示目前匯入第幾題；重複題會標示 `DUPLICATE`。</li>
             </ol>
 
@@ -284,7 +319,7 @@
                     <strong>macOS</strong>
                     <span>Terminal / zsh，含進度表</span>
                   </div>
-                  <button class="ghost-button compact" type="button" @click="copyText(macTimelineImportCommand)">複製</button>
+                  <button class="ghost-button compact" type="button" @click="copyApiCommand(macTimelineImportCommand)">複製</button>
                 </div>
                 <pre>{{ macTimelineImportCommand }}</pre>
               </section>
@@ -294,7 +329,7 @@
                     <strong>Windows</strong>
                     <span>PowerShell，含進度表</span>
                   </div>
-                  <button class="ghost-button compact" type="button" @click="copyText(windowsTimelineImportCommand)">複製</button>
+                  <button class="ghost-button compact" type="button" @click="copyApiCommand(windowsTimelineImportCommand)">複製</button>
                 </div>
                 <pre>{{ windowsTimelineImportCommand }}</pre>
               </section>
@@ -499,7 +534,6 @@ import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
 import MathText from "./components/MathText.vue";
 import SolutionReview from "./components/SolutionReview.vue";
 import {
-  MATH_BANK_STAFF_API_KEY,
   buildMathBankJson,
   extractPdfText,
   getStaffMathBankQuestion,
@@ -571,6 +605,8 @@ const mathBankLoadingMore = ref(false);
 const mathBankHasMore = ref(false);
 const mathBankNextCursor = ref(null);
 const jsonBuilding = ref(false);
+const staffApiKey = ref("");
+const staffApiUrl = ref("http://localhost:8000/api/math-bank/staff/questions/");
 const jsonForm = ref({
   grade_id: "",
   unit_id: "",
@@ -671,8 +707,8 @@ async function loadMathBankTaxonomy() {
   mathBankLoading.value = true;
   message.value = "正在讀取題庫分類...";
   const [gradeResult, unitResult] = await Promise.all([
-    listMathBankGrades(),
-    listMathBankUnits(),
+    listMathBankGrades({}, { apiKey: staffApiKey.value }),
+    listMathBankUnits({}, { apiKey: staffApiKey.value }),
   ]);
 
   if (gradeResult.success) {
@@ -788,7 +824,9 @@ async function loadMathBankQuestions() {
   status.value = "loading";
   message.value = "正在讀取題目...";
 
-  const result = await searchStaffMathBankQuestions(getMathBankSearchParams());
+  const result = await searchStaffMathBankQuestions(getMathBankSearchParams(), {
+    apiKey: staffApiKey.value,
+  });
 
   if (result.success) {
     mergeMathBankQuestions(result.data.results || [], true);
@@ -812,6 +850,7 @@ async function loadMoreMathBankQuestions() {
   mathBankLoadingMore.value = true;
   const result = await searchStaffMathBankQuestions(
     getMathBankSearchParams(mathBankNextCursor.value),
+    { apiKey: staffApiKey.value },
   );
 
   if (result.success) {
@@ -838,7 +877,7 @@ async function ensureMathBankQuestionDetail(id) {
     return current;
   }
 
-  const result = await getStaffMathBankQuestion(id);
+  const result = await getStaffMathBankQuestion(id, { apiKey: staffApiKey.value });
   if (!result.success) {
     status.value = "error";
     message.value = result.error || "題目詳情讀取失敗。";
@@ -967,9 +1006,21 @@ async function downloadMathBankJson() {
   jsonBuilding.value = false;
 }
 
-const macTimelineImportCommand = computed(() => String.raw`API_KEY="${MATH_BANK_STAFF_API_KEY}"
+const apiKeyForCommand = computed(() => staffApiKey.value.trim() || "請輸入_staff_api_key");
+const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "http://localhost:8000/api/math-bank/staff/questions/");
+
+function copyApiCommand(command) {
+  if (!staffApiKey.value.trim()) {
+    status.value = "error";
+    message.value = "請先輸入 Staff API Key。";
+    return;
+  }
+  copyText(command);
+}
+
+const macTimelineImportCommand = computed(() => String.raw`API_KEY="${apiKeyForCommand.value}"
 FILE="./math-bank-questions.json"
-API_URL="http://localhost:8000/api/math-bank/staff/questions/"
+API_URL="${apiUrlForCommand.value}"
 FORCE_DUPLICATES=0
 
 command -v jq >/dev/null || { echo "缺少 jq，請先安裝 jq"; exit 1; }
@@ -1018,9 +1069,9 @@ done < <(jq -c '.questions[]' "$FILE")
 END=$(date +%s)
 echo "完成：成功 $OK / 重複略過 $SKIP / 失敗 $FAIL / 耗時 $((END - START)) 秒"`);
 
-const windowsTimelineImportCommand = computed(() => String.raw`$ApiKey = "${MATH_BANK_STAFF_API_KEY}"
+const windowsTimelineImportCommand = computed(() => String.raw`$ApiKey = "${apiKeyForCommand.value}"
 $File = ".\math-bank-questions.json"
-$ApiUrl = "http://localhost:8000/api/math-bank/staff/questions/"
+$ApiUrl = "${apiUrlForCommand.value}"
 $ForceDuplicates = $false
 
 if (!(Test-Path $File)) { throw "找不到檔案：$File" }

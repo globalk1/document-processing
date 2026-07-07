@@ -4,8 +4,6 @@ const API_URL =
     ? "https://sunnytseng.com/api"
     : "http://127.0.0.1:8000/api");
 const DOCUMENT_PROCESSING_API_KEY = "huanyu-document-processing-colleague-key";
-const MATH_BANK_STAFF_API_KEY =
-  "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 
 async function parseJson(response) {
   try {
@@ -34,12 +32,12 @@ function withQuery(path, params = {}) {
   return queryString ? `${path}?${queryString}` : path;
 }
 
-async function fetchMathBankJson(path, params = {}) {
+async function fetchMathBankJson(path, params = {}, options = {}) {
+  const headers = { Accept: "application/json" };
+  if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
+
   const response = await fetch(`${API_URL}/math-bank${withQuery(path, params)}`, {
-    headers: {
-      "X-API-KEY": MATH_BANK_STAFF_API_KEY,
-      Accept: "application/json",
-    },
+    headers,
   });
   const result = await parseJson(response);
 
@@ -79,24 +77,24 @@ async function postDocumentJson(path, body) {
   return { success: true, data: result };
 }
 
-export async function listMathBankGrades(params = {}) {
-  return fetchMathBankJson("/grades/", params);
+export async function listMathBankGrades(params = {}, options = {}) {
+  return fetchMathBankJson("/grades/", params, options);
 }
 
-export async function listMathBankUnits(params = {}) {
-  return fetchMathBankJson("/units/", params);
+export async function listMathBankUnits(params = {}, options = {}) {
+  return fetchMathBankJson("/units/", params, options);
 }
 
-export async function listStaffMathBankQuestions(params = {}) {
-  return fetchMathBankJson("/staff/questions/", params);
+export async function listStaffMathBankQuestions(params = {}, options = {}) {
+  return fetchMathBankJson("/staff/questions/", params, options);
 }
 
-export async function searchStaffMathBankQuestions(params = {}) {
-  return fetchMathBankJson("/questions/search/", params);
+export async function searchStaffMathBankQuestions(params = {}, options = {}) {
+  return fetchMathBankJson("/questions/search/", params, options);
 }
 
-export async function getStaffMathBankQuestion(id) {
-  return fetchMathBankJson(`/staff/questions/${encodeURIComponent(id)}/`);
+export async function getStaffMathBankQuestion(id, options = {}) {
+  return fetchMathBankJson(`/staff/questions/${encodeURIComponent(id)}/`, {}, options);
 }
 
 export async function buildMathBankJson({
@@ -117,8 +115,6 @@ export async function buildMathBankJson({
   if (!result.success) return result;
   return { success: true, payload: result.data.payload };
 }
-
-export { MATH_BANK_STAFF_API_KEY };
 
 export async function extractPdfText({ file, mode }) {
   const formData = new FormData();
