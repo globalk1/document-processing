@@ -663,7 +663,7 @@ const mathBankHasMore = ref(false);
 const mathBankNextCursor = ref(null);
 const jsonBuilding = ref(false);
 const staffApiKey = ref(defaultStaffApiKey);
-const staffApiUrl = ref("http://localhost:8000/api/math-bank/staff/questions/");
+const staffApiUrl = ref("https://sunnytseng.com/api/math-bank/staff/questions/");
 const apiGuideSelection = ref({
   grade_id: filterNoneValue,
   unit_id: filterNoneValue,
@@ -1165,7 +1165,7 @@ async function downloadMathBankJson() {
 }
 
 const apiKeyForCommand = computed(() => staffApiKey.value.trim() || "請輸入_staff_api_key");
-const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "http://localhost:8000/api/math-bank/staff/questions/");
+const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "https://sunnytseng.com/api/math-bank/staff/questions/");
 const apiGuideGradeIdForCommand = computed(() => selectedApiGuideGradeId.value || "請先選擇年級_UUID");
 const apiGuideUnitIdForCommand = computed(() => selectedApiGuideUnitId.value || "請先選擇單元_UUID");
 const fetchApiUrlForCommand = computed(() => {
@@ -1173,7 +1173,7 @@ const fetchApiUrlForCommand = computed(() => {
   if (importUrl.includes("/staff/questions/")) {
     return importUrl.replace("/staff/questions/", "/questions/search/");
   }
-  return "http://localhost:8000/api/math-bank/questions/search/";
+  return "https://sunnytseng.com/api/math-bank/questions/search/";
 });
 
 function copyApiCommand(command) {
