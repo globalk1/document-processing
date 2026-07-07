@@ -668,8 +668,16 @@ h1 {
 
 .api-config-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.85fr) minmax(320px, 1.15fr);
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
   gap: 12px;
+}
+
+.api-config-hint {
+  margin: -4px 0 0;
+  color: #5f6673;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.6;
 }
 
 .api-key-field {
@@ -680,7 +688,8 @@ h1 {
   font-weight: 900;
 }
 
-.api-key-field input {
+.api-key-field input,
+.api-key-field select {
   min-height: 42px;
   border: 1px solid #d5d7db;
   border-radius: 8px;
@@ -692,7 +701,8 @@ h1 {
   font-weight: 750;
 }
 
-.api-key-field input:focus {
+.api-key-field input:focus,
+.api-key-field select:focus {
   outline: 2px solid rgba(32, 33, 36, 0.12);
   border-color: #202124;
 }

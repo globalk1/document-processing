@@ -294,7 +294,40 @@
                   type="text"
                 />
               </label>
+              <label class="api-key-field">
+                <span>入題年級</span>
+                <select
+                  v-model="apiGuideSelection.grade_id"
+                  class="select-input"
+                  @change="handleApiGuideGradeChange"
+                >
+                  <option :value="filterNoneValue">請選擇年級</option>
+                  <option
+                    v-for="grade in mathBankGrades"
+                    :key="grade.id"
+                    :value="grade.id"
+                  >
+                    {{ grade.name }} / {{ grade.id }}
+                  </option>
+                </select>
+              </label>
+              <label class="api-key-field">
+                <span>入題單元</span>
+                <select v-model="apiGuideSelection.unit_id" class="select-input">
+                  <option :value="filterNoneValue">請選擇單元</option>
+                  <option
+                    v-for="unit in apiGuideFilteredUnits"
+                    :key="unit.id"
+                    :value="unit.id"
+                  >
+                    {{ unit.name }} / {{ unit.id }}
+                  </option>
+                </select>
+              </label>
             </div>
+            <p class="api-config-hint">
+              入題指令會以這裡選擇的年級與單元覆寫 JSON 內每題的 grade_id / unit_id。
+            </p>
 
             <section class="api-command-section">
               <div class="api-section-heading">
@@ -631,6 +664,10 @@ const mathBankNextCursor = ref(null);
 const jsonBuilding = ref(false);
 const staffApiKey = ref(defaultStaffApiKey);
 const staffApiUrl = ref("http://localhost:8000/api/math-bank/staff/questions/");
+const apiGuideSelection = ref({
+  grade_id: filterNoneValue,
+  unit_id: filterNoneValue,
+});
 const mathBankFilters = ref({
   search: "",
   grade_id: filterNoneValue,
@@ -654,6 +691,18 @@ const filteredMathBankUnits = computed(() => {
     (unit) => unit.grade?.id === mathBankFilters.value.grade_id,
   );
 });
+const apiGuideFilteredUnits = computed(() => {
+  if (apiGuideSelection.value.grade_id === filterNoneValue) return [];
+  return mathBankUnits.value.filter(
+    (unit) => unit.grade?.id === apiGuideSelection.value.grade_id,
+  );
+});
+const selectedApiGuideGradeId = computed(() =>
+  apiGuideSelection.value.grade_id === filterNoneValue ? "" : apiGuideSelection.value.grade_id,
+);
+const selectedApiGuideUnitId = computed(() =>
+  apiGuideSelection.value.unit_id === filterNoneValue ? "" : apiGuideSelection.value.unit_id,
+);
 const hasMathBankConditions = computed(() => Boolean(
   mathBankFilters.value.search.trim() ||
     mathBankFilters.value.grade_id !== filterNoneValue ||
@@ -705,13 +754,20 @@ function switchMode(value) {
   if (value === "question-bank") {
     loadMathBankWorkspace();
   }
+  if (value === "api-guide") {
+    loadMathBankTaxonomy();
+  }
 }
 
 function handleStaffApiKeyInput() {
   mathBankGrades.value = [];
   mathBankUnits.value = [];
+  apiGuideSelection.value = {
+    grade_id: filterNoneValue,
+    unit_id: filterNoneValue,
+  };
   clearMathBankQuestions();
-  if (isQuestionBankMode.value) {
+  if (isQuestionBankMode.value || isApiGuideMode.value) {
     status.value = hasStaffApiKey.value ? "idle" : "error";
     message.value = hasStaffApiKey.value ? "請重新讀取題庫分類。" : "請先輸入 Staff API Key。";
   }
@@ -778,6 +834,10 @@ function handleMathBankGradeChange() {
       ? filterNoneValue
       : filterAllValue;
   loadMathBankQuestions();
+}
+
+function handleApiGuideGradeChange() {
+  apiGuideSelection.value.unit_id = filterNoneValue;
 }
 
 function resetMathBankFilters() {
@@ -1106,6 +1166,8 @@ async function downloadMathBankJson() {
 
 const apiKeyForCommand = computed(() => staffApiKey.value.trim() || "請輸入_staff_api_key");
 const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "http://localhost:8000/api/math-bank/staff/questions/");
+const apiGuideGradeIdForCommand = computed(() => selectedApiGuideGradeId.value || "請先選擇年級_UUID");
+const apiGuideUnitIdForCommand = computed(() => selectedApiGuideUnitId.value || "請先選擇單元_UUID");
 const fetchApiUrlForCommand = computed(() => {
   const importUrl = apiUrlForCommand.value;
   if (importUrl.includes("/staff/questions/")) {
@@ -1120,14 +1182,22 @@ function copyApiCommand(command) {
     message.value = "請先輸入 Staff API Key。";
     return;
   }
+  if (!selectedApiGuideGradeId.value || !selectedApiGuideUnitId.value) {
+    status.value = "error";
+    message.value = "請先選擇年級與單元，系統會自動帶入 UUID。";
+    return;
+  }
   copyText(command);
 }
 
 const macTimelineImportCommand = computed(() => String.raw`API_KEY="${apiKeyForCommand.value}"
 FILE="./math-bank-questions.json"
 API_URL="${apiUrlForCommand.value}"
+GRADE_ID="${apiGuideGradeIdForCommand.value}"
+UNIT_ID="${apiGuideUnitIdForCommand.value}"
 FORCE_DUPLICATES=0
 
+case "$GRADE_ID:$UNIT_ID" in *請先選擇*) echo "請先在 UI 選擇年級與單元後再複製指令"; exit 1;; esac
 command -v jq >/dev/null || { echo "缺少 jq，請先安裝 jq"; exit 1; }
 [ -f "$FILE" ] || { echo "找不到檔案：$FILE"; exit 1; }
 
@@ -1141,6 +1211,7 @@ echo "開始匯入：$TOTAL 題"
 i=0
 while read -r body; do
   i=$((i + 1))
+  body=$(printf '%s' "$body" | jq -c --arg grade "$GRADE_ID" --arg unit "$UNIT_ID" '. + {grade_id: $grade, unit_id: $unit}')
   if [ "$FORCE_DUPLICATES" = "1" ]; then
     body=$(printf '%s' "$body" | jq -c '. + {duplicate_policy: "allow"}')
   fi
@@ -1177,8 +1248,11 @@ echo "完成：成功 $OK / 重複略過 $SKIP / 失敗 $FAIL / 耗時 $((END - 
 const windowsTimelineImportCommand = computed(() => String.raw`$ApiKey = "${apiKeyForCommand.value}"
 $File = ".\math-bank-questions.json"
 $ApiUrl = "${apiUrlForCommand.value}"
+$GradeId = "${apiGuideGradeIdForCommand.value}"
+$UnitId = "${apiGuideUnitIdForCommand.value}"
 $ForceDuplicates = $false
 
+if ($GradeId -like "請先選擇*" -or $UnitId -like "請先選擇*") { throw "請先在 UI 選擇年級與單元後再複製指令" }
 if (!(Test-Path $File)) { throw "找不到檔案：$File" }
 $Data = Get-Content $File -Raw | ConvertFrom-Json
 $Questions = @($Data.questions)
@@ -1192,6 +1266,8 @@ Write-Host "開始匯入：$Total 題"
 
 foreach ($Question in $Questions) {
   $Index++
+  $Question | Add-Member -NotePropertyName "grade_id" -NotePropertyValue $GradeId -Force
+  $Question | Add-Member -NotePropertyName "unit_id" -NotePropertyValue $UnitId -Force
   if ($ForceDuplicates) { $Question | Add-Member -NotePropertyName "duplicate_policy" -NotePropertyValue "allow" -Force }
   $Title = (($Question.prompt_md -replace "\s+", " ").Trim())
   if ($Title.Length -gt 36) { $Title = $Title.Substring(0, 36) }
@@ -1227,11 +1303,13 @@ OUTPUT = "math-bank-fetch-results.json"
 
 params = {
     "limit": 50,
-    "grade_id": "",
-    "unit_id": "",
+    "grade_id": "${apiGuideGradeIdForCommand.value}",
+    "unit_id": "${apiGuideUnitIdForCommand.value}",
     "difficulty": "",
     "status": "",
 }
+if "請先選擇" in params["grade_id"] or "請先選擇" in params["unit_id"]:
+    raise SystemExit("請先在 UI 選擇年級與單元後再複製程式碼")
 params = {key: value for key, value in params.items() if value != ""}
 
 response = requests.get(
