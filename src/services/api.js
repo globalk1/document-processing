@@ -48,6 +48,31 @@ async function fetchMathBankJson(path, params = {}) {
       success: false,
       error: getAuthError(response, result, "題庫讀取失敗"),
       status: response.status,
+      data: result,
+    };
+  }
+
+  return { success: true, data: result };
+}
+
+async function postDocumentJson(path, body) {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-KEY": DOCUMENT_PROCESSING_API_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const result = await parseJson(response);
+
+  if (!response.ok || result.success === false) {
+    return {
+      success: false,
+      error: getAuthError(response, result, "請求失敗"),
+      code: result.code,
+      status: response.status,
+      data: result,
     };
   }
 
@@ -65,6 +90,35 @@ export async function listMathBankUnits(params = {}) {
 export async function listStaffMathBankQuestions(params = {}) {
   return fetchMathBankJson("/staff/questions/", params);
 }
+
+export async function searchStaffMathBankQuestions(params = {}) {
+  return fetchMathBankJson("/questions/search/", params);
+}
+
+export async function getStaffMathBankQuestion(id) {
+  return fetchMathBankJson(`/staff/questions/${encodeURIComponent(id)}/`);
+}
+
+export async function buildMathBankJson({
+  text,
+  gradeId,
+  unitId,
+  defaultType = "calculation",
+  defaultDifficulty = "A",
+}) {
+  const result = await postDocumentJson("/pdf/math-bank-json/", {
+    text,
+    grade_id: gradeId,
+    unit_id: unitId,
+    default_type: defaultType,
+    default_difficulty: defaultDifficulty,
+  });
+
+  if (!result.success) return result;
+  return { success: true, payload: result.data.payload };
+}
+
+export { MATH_BANK_STAFF_API_KEY };
 
 export async function extractPdfText({ file, mode }) {
   const formData = new FormData();

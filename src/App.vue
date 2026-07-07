@@ -3,7 +3,7 @@
     <header class="app-header">
       <div class="title-group">
         <div class="eyebrow">寰宇教育-教務部內部使用</div>
-        <h1>文件解析與題庫挑題</h1>
+        <h1>題庫 JSON 工具</h1>
       </div>
       <div class="header-actions">
         <span class="app-version">v{{ APP_VERSION }}</span>
@@ -11,24 +11,28 @@
       </div>
     </header>
 
-    <section class="workspace" :class="{ 'question-bank-workspace': isQuestionBankMode }">
-      <aside class="control-panel">
-        <h2 class="section-title">模式</h2>
-        <div class="mode-grid">
-          <button
-            v-for="item in modes"
-            :key="item.value"
-            class="mode-button"
-            :class="{ active: mode === item.value }"
-            type="button"
-            @click="switchMode(item.value)"
-          >
-            <span class="mode-icon">{{ item.icon }}</span>
-            <span>{{ item.title }}</span>
-            <small>{{ item.description }}</small>
-          </button>
-        </div>
+    <nav class="tab-bar" aria-label="功能切換">
+      <button
+        v-for="item in modes"
+        :key="item.value"
+        class="tab-button"
+        :class="{ active: mode === item.value }"
+        type="button"
+        @click="switchMode(item.value)"
+      >
+        <span class="tab-icon">{{ item.icon }}</span>
+        <span>{{ item.title }}</span>
+      </button>
+    </nav>
 
+    <section
+      class="workspace"
+      :class="{
+        'question-bank-workspace': isQuestionBankMode,
+        'api-guide-workspace': isApiGuideMode,
+      }"
+    >
+      <aside v-if="!isApiGuideMode" class="control-panel">
         <template v-if="isQuestionBankMode">
           <section class="filter-panel">
             <div class="filter-panel-header">
@@ -60,7 +64,8 @@
                   class="select-input"
                   @change="handleMathBankGradeChange"
                 >
-                  <option value="">全部年級</option>
+                  <option :value="filterNoneValue">請選擇條件</option>
+                  <option :value="filterAllValue">全部年級</option>
                   <option
                     v-for="grade in mathBankGrades"
                     :key="grade.id"
@@ -78,7 +83,8 @@
                   class="select-input"
                   @change="loadMathBankQuestions"
                 >
-                  <option value="">全部單元</option>
+                  <option :value="filterNoneValue">請選擇條件</option>
+                  <option :value="filterAllValue">全部單元</option>
                   <option
                     v-for="unit in filteredMathBankUnits"
                     :key="unit.id"
@@ -156,7 +162,7 @@
         </template>
 
         <template v-else>
-          <h2 class="section-title">檔案</h2>
+          <h2 class="section-title">文件來源</h2>
           <div
             class="drop-zone"
             :class="{ over: dragOver }"
@@ -194,15 +200,114 @@
               Page {{ page.page }}: {{ page.char_count }} chars
             </span>
           </div>
+
+          <section class="json-panel">
+            <div class="filter-panel-header">
+              <h2 class="section-title">JSON 設定</h2>
+              <button class="ghost-button compact" type="button" @click="loadMathBankTaxonomy">
+                重新讀取
+              </button>
+            </div>
+            <label>
+              <span class="field-label">年級</span>
+              <select v-model="jsonForm.grade_id" class="select-input" @change="jsonForm.unit_id = ''">
+                <option value="">選擇年級</option>
+                <option v-for="grade in mathBankGrades" :key="grade.id" :value="grade.id">
+                  {{ grade.name }}
+                </option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label">單元</span>
+              <select v-model="jsonForm.unit_id" class="select-input">
+                <option value="">選擇單元</option>
+                <option v-for="unit in jsonFilteredUnits" :key="unit.id" :value="unit.id">
+                  {{ unit.name }}
+                </option>
+              </select>
+            </label>
+            <div class="filter-grid two">
+              <label>
+                <span class="field-label">題型</span>
+                <select v-model="jsonForm.default_type" class="select-input">
+                  <option value="calculation">計算題</option>
+                  <option value="choice">選擇題</option>
+                  <option value="fill">填充題</option>
+                  <option value="proof">證明題</option>
+                  <option value="application">應用題</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">難度</span>
+                <select v-model="jsonForm.default_difficulty" class="select-input">
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                  <option value="S">S</option>
+                </select>
+              </label>
+            </div>
+            <button
+              class="primary-button full"
+              :disabled="jsonBuilding || !text.trim()"
+              type="button"
+              @click="downloadMathBankJson"
+            >
+              {{ jsonBuilding ? "轉換中" : "下載題庫 JSON" }}
+            </button>
+            <p class="json-help">若文字無法切成題目，後端會回「未讀取到題目」。</p>
+          </section>
         </template>
       </aside>
 
       <section class="output-panel">
-        <template v-if="isQuestionBankMode">
+        <template v-if="isApiGuideMode">
+          <div class="api-guide-panel">
+            <div class="api-guide-header">
+              <div>
+                <h2 class="section-title">API 串接</h2>
+                <p>同事下載 `math-bank-questions.json` 後，選一個環境複製執行即可。</p>
+              </div>
+              <span class="api-guide-badge">遇到重複題預設略過</span>
+            </div>
+
+            <ol class="api-step-list">
+              <li>把 JSON 檔放在要執行指令的資料夾，檔名維持 `math-bank-questions.json`。</li>
+              <li>確認後端可以連到 `http://localhost:8000`。</li>
+              <li>進度列會顯示目前匯入第幾題；重複題會標示 `DUPLICATE`。</li>
+            </ol>
+
+            <div class="api-code-grid">
+              <section class="api-code-card">
+                <div class="code-header">
+                  <div>
+                    <strong>macOS</strong>
+                    <span>Terminal / zsh，含進度表</span>
+                  </div>
+                  <button class="ghost-button compact" type="button" @click="copyText(macTimelineImportCommand)">複製</button>
+                </div>
+                <pre>{{ macTimelineImportCommand }}</pre>
+              </section>
+              <section class="api-code-card">
+                <div class="code-header">
+                  <div>
+                    <strong>Windows</strong>
+                    <span>PowerShell，含進度表</span>
+                  </div>
+                  <button class="ghost-button compact" type="button" @click="copyText(windowsTimelineImportCommand)">複製</button>
+                </div>
+                <pre>{{ windowsTimelineImportCommand }}</pre>
+              </section>
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="isQuestionBankMode">
           <div class="question-bank-toolbar">
             <div>
               <h2 class="section-title">題庫列表</h2>
-              <p>{{ mathBankQuestions.length }} 題符合條件，{{ selectedMathBankQuestions.length }} 題已選</p>
+              <p v-if="hasMathBankConditions">{{ mathBankQuestions.length }}{{ mathBankHasMore ? "+" : "" }} 題符合條件，{{ selectedMathBankQuestions.length }} 題已選</p>
+              <p v-else>請選擇條件</p>
             </div>
             <div class="icon-group">
               <button
@@ -217,6 +322,9 @@
           </div>
 
           <div v-if="mathBankLoading" class="empty-state">Loading...</div>
+          <div v-else-if="!hasMathBankConditions" class="empty-state">
+            請選擇條件
+          </div>
           <div v-else-if="!mathBankQuestions.length" class="empty-state">
             沒有符合條件的題目。
           </div>
@@ -281,6 +389,18 @@
                 </button>
               </div>
             </article>
+            <div class="load-more-row">
+              <button
+                v-if="mathBankHasMore"
+                class="secondary-button"
+                :disabled="mathBankLoadingMore"
+                type="button"
+                @click="loadMoreMathBankQuestions"
+              >
+                {{ mathBankLoadingMore ? "載入中" : "載入更多" }}
+              </button>
+              <span v-else>已載入全部符合條件的題目</span>
+            </div>
           </div>
         </template>
 
@@ -379,11 +499,14 @@ import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
 import MathText from "./components/MathText.vue";
 import SolutionReview from "./components/SolutionReview.vue";
 import {
+  MATH_BANK_STAFF_API_KEY,
+  buildMathBankJson,
   extractPdfText,
+  getStaffMathBankQuestion,
   listMathBankGrades,
   listMathBankUnits,
-  listStaffMathBankQuestions,
   processAiText,
+  searchStaffMathBankQuestions,
 } from "./services/api";
 import {
   extractAccuratePdfInPages,
@@ -398,21 +521,33 @@ import {
 const modes = [
   {
     value: "text-extract",
-    icon: "TXT",
-    title: "圖片/PDF 轉文字",
-    description: "上傳 PDF 或圖片後轉成文字。",
-    actionTitle: "開始轉文字",
+    icon: "JSON",
+    title: "文件轉 JSON",
+    description: "上傳 PDF 或圖片後轉成題庫 JSON。",
+    actionTitle: "開始解析",
     loadingTitle: "解析中",
   },
   {
     value: "question-bank",
-    icon: "QB",
+    icon: "題",
     title: "題庫挑題",
     description: "搜尋、篩選並複製題目。",
     actionTitle: "讀取題庫",
     loadingTitle: "題庫讀取中",
   },
+  {
+    value: "api-guide",
+    icon: "API",
+    title: "API 串接",
+    description: "複製 macOS / Windows 匯入指令。",
+    actionTitle: "查看指令",
+    loadingTitle: "讀取中",
+  },
 ];
+
+const filterNoneValue = "__none__";
+const filterAllValue = "__all__";
+const mathBankPageSize = 30;
 
 const fileInput = ref(null);
 const file = ref(null);
@@ -429,32 +564,59 @@ const copyMessage = ref("");
 const mathBankGrades = ref([]);
 const mathBankUnits = ref([]);
 const mathBankQuestions = ref([]);
+const mathBankQuestionById = ref({});
 const selectedMathBankQuestionIds = ref([]);
 const mathBankLoading = ref(false);
-const mathBankFilters = ref({
-  search: "",
+const mathBankLoadingMore = ref(false);
+const mathBankHasMore = ref(false);
+const mathBankNextCursor = ref(null);
+const jsonBuilding = ref(false);
+const jsonForm = ref({
   grade_id: "",
   unit_id: "",
+  default_type: "calculation",
+  default_difficulty: "A",
+});
+const mathBankFilters = ref({
+  search: "",
+  grade_id: filterNoneValue,
+  unit_id: filterNoneValue,
   difficulty: "",
   status: "",
 });
 let mathBankSearchTimer = null;
 
 const isQuestionBankMode = computed(() => mode.value === "question-bank");
+const isApiGuideMode = computed(() => mode.value === "api-guide");
 const isBusy = computed(() => status.value === "loading");
 const selectedMode = computed(
   () => modes.find((item) => item.value === mode.value) || modes[0],
 );
 const filteredMathBankUnits = computed(() => {
-  if (!mathBankFilters.value.grade_id) return mathBankUnits.value;
+  if (mathBankFilters.value.grade_id === filterNoneValue) return [];
+  if (mathBankFilters.value.grade_id === filterAllValue) return mathBankUnits.value;
   return mathBankUnits.value.filter(
     (unit) => unit.grade?.id === mathBankFilters.value.grade_id,
   );
 });
-const selectedMathBankQuestions = computed(() => {
-  const selectedIds = new Set(selectedMathBankQuestionIds.value);
-  return mathBankQuestions.value.filter((question) => selectedIds.has(question.id));
+const jsonFilteredUnits = computed(() => {
+  if (!jsonForm.value.grade_id) return [];
+  return mathBankUnits.value.filter(
+    (unit) => unit.grade?.id === jsonForm.value.grade_id,
+  );
 });
+const hasMathBankConditions = computed(() => Boolean(
+  mathBankFilters.value.search.trim() ||
+    mathBankFilters.value.grade_id !== filterNoneValue ||
+    mathBankFilters.value.unit_id !== filterNoneValue ||
+    mathBankFilters.value.difficulty ||
+    mathBankFilters.value.status,
+));
+const selectedMathBankQuestions = computed(() =>
+  selectedMathBankQuestionIds.value
+    .map((id) => mathBankQuestionById.value[id])
+    .filter(Boolean),
+);
 const editorConfig = computed(() => {
   if (expandedEditor.value === "text") {
     return {
@@ -497,10 +659,14 @@ function switchMode(value) {
 }
 
 async function loadMathBankWorkspace() {
-  if (mathBankGrades.value.length && mathBankUnits.value.length) {
-    loadMathBankQuestions();
-    return;
+  const taxonomyLoaded = await loadMathBankTaxonomy();
+  if (taxonomyLoaded && hasMathBankConditions.value) {
+    await loadMathBankQuestions();
   }
+}
+
+async function loadMathBankTaxonomy() {
+  if (mathBankGrades.value.length && mathBankUnits.value.length) return true;
 
   mathBankLoading.value = true;
   message.value = "正在讀取題庫分類...";
@@ -516,14 +682,18 @@ async function loadMathBankWorkspace() {
     mathBankUnits.value = unitResult.data || [];
   }
 
+  mathBankLoading.value = false;
+
   if (!gradeResult.success || !unitResult.success) {
     status.value = "error";
     message.value = gradeResult.error || unitResult.error || "題庫分類讀取失敗。";
-    mathBankLoading.value = false;
-    return;
+    return false;
   }
 
-  await loadMathBankQuestions();
+  if (!message.value || message.value === "正在讀取題庫分類...") {
+    message.value = "題庫分類已讀取。";
+  }
+  return true;
 }
 
 function scheduleMathBankQuestionLoad() {
@@ -535,41 +705,97 @@ function scheduleMathBankQuestionLoad() {
 }
 
 function handleMathBankGradeChange() {
-  mathBankFilters.value.unit_id = "";
+  mathBankFilters.value.unit_id =
+    mathBankFilters.value.grade_id === filterNoneValue
+      ? filterNoneValue
+      : filterAllValue;
   loadMathBankQuestions();
 }
 
 function resetMathBankFilters() {
   mathBankFilters.value = {
     search: "",
-    grade_id: "",
-    unit_id: "",
+    grade_id: filterNoneValue,
+    unit_id: filterNoneValue,
     difficulty: "",
     status: "",
   };
-  loadMathBankQuestions();
+  clearMathBankQuestions();
+  status.value = "idle";
+  message.value = "請選擇條件";
+}
+
+function clearMathBankQuestions() {
+  mathBankQuestions.value = [];
+  mathBankQuestionById.value = {};
+  selectedMathBankQuestionIds.value = [];
+  mathBankHasMore.value = false;
+  mathBankNextCursor.value = null;
+}
+
+function getMathBankSearchParams(cursor = "") {
+  return {
+    search: mathBankFilters.value.search.trim(),
+    grade_id:
+      mathBankFilters.value.grade_id === filterNoneValue ||
+      mathBankFilters.value.grade_id === filterAllValue
+        ? ""
+        : mathBankFilters.value.grade_id,
+    unit_id:
+      mathBankFilters.value.unit_id === filterNoneValue ||
+      mathBankFilters.value.unit_id === filterAllValue
+        ? ""
+        : mathBankFilters.value.unit_id,
+    difficulty: mathBankFilters.value.difficulty,
+    status: mathBankFilters.value.status,
+    limit: mathBankPageSize,
+    cursor,
+  };
+}
+
+function mergeMathBankQuestions(items, reset = false) {
+  const nextById = reset ? {} : { ...mathBankQuestionById.value };
+  const nextIds = reset ? [] : mathBankQuestions.value.map((question) => question.id);
+  const idSet = new Set(nextIds);
+
+  items.forEach((question) => {
+    nextById[question.id] = {
+      ...(nextById[question.id] || {}),
+      ...question,
+    };
+    if (!idSet.has(question.id)) {
+      nextIds.push(question.id);
+      idSet.add(question.id);
+    }
+  });
+
+  mathBankQuestionById.value = nextById;
+  mathBankQuestions.value = nextIds.map((id) => nextById[id]).filter(Boolean);
+  selectedMathBankQuestionIds.value = selectedMathBankQuestionIds.value.filter(
+    (id) => Boolean(nextById[id]),
+  );
 }
 
 async function loadMathBankQuestions() {
+  if (!hasMathBankConditions.value) {
+    clearMathBankQuestions();
+    status.value = "idle";
+    message.value = "請選擇條件";
+    return;
+  }
+
   mathBankLoading.value = true;
   status.value = "loading";
   message.value = "正在讀取題目...";
 
-  const result = await listStaffMathBankQuestions({
-    search: mathBankFilters.value.search.trim(),
-    grade_id: mathBankFilters.value.grade_id,
-    unit_id: mathBankFilters.value.unit_id,
-    difficulty: mathBankFilters.value.difficulty,
-    status: mathBankFilters.value.status,
-  });
+  const result = await searchStaffMathBankQuestions(getMathBankSearchParams());
 
   if (result.success) {
-    mathBankQuestions.value = result.data || [];
-    selectedMathBankQuestionIds.value = selectedMathBankQuestionIds.value.filter(
-      (id) => mathBankQuestions.value.some((question) => question.id === id),
-    );
+    mergeMathBankQuestions(result.data.results || [], true);
+    mathBankHasMore.value = Boolean(result.data.has_more);
+    mathBankNextCursor.value = result.data.next_cursor || null;
     status.value = "success";
-    message.value = `已讀取 ${mathBankQuestions.value.length} 題。`;
+    message.value = `已讀取 ${mathBankQuestions.value.length}${mathBankHasMore.value ? "+" : ""} 題。`;
   } else {
     status.value = "error";
     message.value = result.error || "題目讀取失敗。";
@@ -578,14 +804,74 @@ async function loadMathBankQuestions() {
   mathBankLoading.value = false;
 }
 
+async function loadMoreMathBankQuestions() {
+  if (!mathBankHasMore.value || !mathBankNextCursor.value || mathBankLoadingMore.value) {
+    return;
+  }
+
+  mathBankLoadingMore.value = true;
+  const result = await searchStaffMathBankQuestions(
+    getMathBankSearchParams(mathBankNextCursor.value),
+  );
+
+  if (result.success) {
+    mergeMathBankQuestions(result.data.results || [], false);
+    mathBankHasMore.value = Boolean(result.data.has_more);
+    mathBankNextCursor.value = result.data.next_cursor || null;
+    status.value = "success";
+    message.value = `已讀取 ${mathBankQuestions.value.length}${mathBankHasMore.value ? "+" : ""} 題。`;
+  } else {
+    status.value = "error";
+    message.value = result.error || "載入更多題目失敗。";
+  }
+
+  mathBankLoadingMore.value = false;
+}
+
+async function ensureMathBankQuestionDetail(id) {
+  const current = mathBankQuestionById.value[id];
+  if (
+    current &&
+    Object.prototype.hasOwnProperty.call(current, "answer_md") &&
+    Object.prototype.hasOwnProperty.call(current, "solution_md")
+  ) {
+    return current;
+  }
+
+  const result = await getStaffMathBankQuestion(id);
+  if (!result.success) {
+    status.value = "error";
+    message.value = result.error || "題目詳情讀取失敗。";
+    return current;
+  }
+
+  mathBankQuestionById.value = {
+    ...mathBankQuestionById.value,
+    [id]: {
+      ...(current || {}),
+      ...result.data,
+    },
+  };
+  mathBankQuestions.value = mathBankQuestions.value.map((question) =>
+    question.id === id ? mathBankQuestionById.value[id] : question,
+  );
+  return mathBankQuestionById.value[id];
+}
+
 function isMathBankQuestionSelected(id) {
   return selectedMathBankQuestionIds.value.includes(id);
 }
 
-function toggleMathBankQuestion(id) {
-  selectedMathBankQuestionIds.value = isMathBankQuestionSelected(id)
-    ? selectedMathBankQuestionIds.value.filter((selectedId) => selectedId !== id)
-    : [...selectedMathBankQuestionIds.value, id];
+async function toggleMathBankQuestion(id) {
+  if (isMathBankQuestionSelected(id)) {
+    selectedMathBankQuestionIds.value = selectedMathBankQuestionIds.value.filter(
+      (selectedId) => selectedId !== id,
+    );
+    return;
+  }
+
+  await ensureMathBankQuestionDetail(id);
+  selectedMathBankQuestionIds.value = [...selectedMathBankQuestionIds.value, id];
 }
 
 function formatQuestionStatus(statusValue) {
@@ -624,9 +910,157 @@ function buildSelectedQuestionsText() {
     .join("\n\n");
 }
 
-function copySelectedQuestions() {
+async function copySelectedQuestions() {
+  await Promise.all(
+    selectedMathBankQuestionIds.value.map((id) => ensureMathBankQuestionDetail(id)),
+  );
   copyText(buildSelectedQuestionsText());
 }
+
+function downloadJson(payload, filename) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function downloadMathBankJson() {
+  if (!text.value.trim()) {
+    status.value = "error";
+    message.value = "請先有解析文字。";
+    return;
+  }
+  if (!jsonForm.value.grade_id || !jsonForm.value.unit_id) {
+    status.value = "error";
+    message.value = "請選擇年級與單元。";
+    return;
+  }
+
+  jsonBuilding.value = true;
+  status.value = "loading";
+  message.value = "正在轉換題庫 JSON...";
+
+  const result = await buildMathBankJson({
+    text: text.value,
+    gradeId: jsonForm.value.grade_id,
+    unitId: jsonForm.value.unit_id,
+    defaultType: jsonForm.value.default_type,
+    defaultDifficulty: jsonForm.value.default_difficulty,
+  });
+
+  if (result.success) {
+    downloadJson(result.payload, "math-bank-questions.json");
+    status.value = "success";
+    message.value = `已產生 ${result.payload?.questions?.length || 0} 題 JSON。`;
+  } else {
+    status.value = "error";
+    message.value = result.error || "題庫 JSON 轉換失敗。";
+  }
+
+  jsonBuilding.value = false;
+}
+
+const macTimelineImportCommand = computed(() => String.raw`API_KEY="${MATH_BANK_STAFF_API_KEY}"
+FILE="./math-bank-questions.json"
+API_URL="http://localhost:8000/api/math-bank/staff/questions/"
+FORCE_DUPLICATES=0
+
+command -v jq >/dev/null || { echo "缺少 jq，請先安裝 jq"; exit 1; }
+[ -f "$FILE" ] || { echo "找不到檔案：$FILE"; exit 1; }
+
+TOTAL=$(jq ".questions | length" "$FILE")
+OK=0
+SKIP=0
+FAIL=0
+START=$(date +%s)
+echo "開始匯入：$TOTAL 題"
+
+i=0
+while read -r body; do
+  i=$((i + 1))
+  if [ "$FORCE_DUPLICATES" = "1" ]; then
+    body=$(printf '%s' "$body" | jq -c '. + {duplicate_policy: "allow"}')
+  fi
+  title=$(printf '%s' "$body" | jq -r '.prompt_md // "" | gsub("\\n"; " ") | .[0:36]')
+  printf "[%s/%s] %s ... " "$i" "$TOTAL" "$title"
+
+  response=$(curl -sS -w '\n%{http_code}' -X POST "$API_URL" \
+    -H "Content-Type: application/json" \
+    -H "X-API-KEY: $API_KEY" \
+    -d "$body")
+  http_code=$(printf "%s" "$response" | tail -n 1)
+  response_body=$(printf "%s" "$response" | sed '$d')
+
+  if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+    id=$(printf "%s" "$response_body" | jq -r ".id // empty")
+    echo "OK $id"
+    OK=$((OK + 1))
+  else
+    duplicate_id=$(printf '%s' "$response_body" | jq -r '.duplicate_question_id[0] // .duplicate_question_id // empty')
+    if [ -n "$duplicate_id" ]; then
+      echo "DUPLICATE $duplicate_id"
+      SKIP=$((SKIP + 1))
+    else
+      echo "FAIL HTTP $http_code"
+      printf "%s\n" "$response_body"
+      FAIL=$((FAIL + 1))
+    fi
+  fi
+done < <(jq -c '.questions[]' "$FILE")
+
+END=$(date +%s)
+echo "完成：成功 $OK / 重複略過 $SKIP / 失敗 $FAIL / 耗時 $((END - START)) 秒"`);
+
+const windowsTimelineImportCommand = computed(() => String.raw`$ApiKey = "${MATH_BANK_STAFF_API_KEY}"
+$File = ".\math-bank-questions.json"
+$ApiUrl = "http://localhost:8000/api/math-bank/staff/questions/"
+$ForceDuplicates = $false
+
+if (!(Test-Path $File)) { throw "找不到檔案：$File" }
+$Data = Get-Content $File -Raw | ConvertFrom-Json
+$Questions = @($Data.questions)
+$Total = $Questions.Count
+$Ok = 0
+$Skip = 0
+$Fail = 0
+$Index = 0
+$Start = Get-Date
+Write-Host "開始匯入：$Total 題"
+
+foreach ($Question in $Questions) {
+  $Index++
+  if ($ForceDuplicates) { $Question | Add-Member -NotePropertyName "duplicate_policy" -NotePropertyValue "allow" -Force }
+  $Title = (($Question.prompt_md -replace "\s+", " ").Trim())
+  if ($Title.Length -gt 36) { $Title = $Title.Substring(0, 36) }
+  Write-Host "[$Index/$Total] $Title ... " -NoNewline
+  $Body = $Question | ConvertTo-Json -Depth 20 -Compress
+  try {
+    $Result = Invoke-RestMethod -Method Post -Uri $ApiUrl -Headers @{ "X-API-KEY" = $ApiKey; "Content-Type" = "application/json" } -Body $Body
+    Write-Host "OK $($Result.id)"
+    $Ok++
+  } catch {
+    $ErrorJson = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
+    $DuplicateId = @($ErrorJson.duplicate_question_id)[0]
+    if ($DuplicateId) {
+      Write-Host "DUPLICATE $DuplicateId"
+      $Skip++
+    } else {
+      Write-Host "FAIL"
+      Write-Host $_.Exception.Message
+      $Fail++
+    }
+  }
+}
+
+$Elapsed = [int]((Get-Date) - $Start).TotalSeconds
+Write-Host "完成：成功 $Ok / 重複略過 $Skip / 失敗 $Fail / 耗時 $Elapsed 秒"`);
 
 function handleFile(selectedFile) {
   if (!selectedFile) return;
