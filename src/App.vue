@@ -40,6 +40,7 @@
               <input
                 v-model="staffApiKey"
                 autocomplete="off"
+                @input="handleStaffApiKeyInput"
                 spellcheck="false"
                 type="password"
                 placeholder="請輸入 staff API key"
@@ -290,6 +291,7 @@
                 <input
                   v-model="staffApiKey"
                   autocomplete="off"
+                  @input="handleStaffApiKeyInput"
                   spellcheck="false"
                   type="password"
                   placeholder="請輸入 staff API key"
@@ -582,6 +584,7 @@ const modes = [
 const filterNoneValue = "__none__";
 const filterAllValue = "__all__";
 const mathBankPageSize = 30;
+const defaultStaffApiKey = "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 
 const fileInput = ref(null);
 const file = ref(null);
@@ -605,7 +608,7 @@ const mathBankLoadingMore = ref(false);
 const mathBankHasMore = ref(false);
 const mathBankNextCursor = ref(null);
 const jsonBuilding = ref(false);
-const staffApiKey = ref("");
+const staffApiKey = ref(defaultStaffApiKey);
 const staffApiUrl = ref("http://localhost:8000/api/math-bank/staff/questions/");
 const jsonForm = ref({
   grade_id: "",
@@ -624,6 +627,7 @@ let mathBankSearchTimer = null;
 
 const isQuestionBankMode = computed(() => mode.value === "question-bank");
 const isApiGuideMode = computed(() => mode.value === "api-guide");
+const hasStaffApiKey = computed(() => Boolean(staffApiKey.value.trim()));
 const isBusy = computed(() => status.value === "loading");
 const selectedMode = computed(
   () => modes.find((item) => item.value === mode.value) || modes[0],
@@ -694,7 +698,25 @@ function switchMode(value) {
   }
 }
 
+function handleStaffApiKeyInput() {
+  mathBankGrades.value = [];
+  mathBankUnits.value = [];
+  clearMathBankQuestions();
+  if (isQuestionBankMode.value) {
+    status.value = hasStaffApiKey.value ? "idle" : "error";
+    message.value = hasStaffApiKey.value ? "請重新讀取題庫分類。" : "請先輸入 Staff API Key。";
+  }
+}
+
+function requireStaffApiKey() {
+  if (hasStaffApiKey.value) return true;
+  status.value = "error";
+  message.value = "請先輸入 Staff API Key。";
+  return false;
+}
+
 async function loadMathBankWorkspace() {
+  if (!requireStaffApiKey()) return;
   const taxonomyLoaded = await loadMathBankTaxonomy();
   if (taxonomyLoaded && hasMathBankConditions.value) {
     await loadMathBankQuestions();
@@ -702,6 +724,7 @@ async function loadMathBankWorkspace() {
 }
 
 async function loadMathBankTaxonomy() {
+  if (!requireStaffApiKey()) return false;
   if (mathBankGrades.value.length && mathBankUnits.value.length) return true;
 
   mathBankLoading.value = true;
@@ -813,6 +836,7 @@ function mergeMathBankQuestions(items, reset = false) {
 }
 
 async function loadMathBankQuestions() {
+  if (!requireStaffApiKey()) return;
   if (!hasMathBankConditions.value) {
     clearMathBankQuestions();
     status.value = "idle";
@@ -843,6 +867,7 @@ async function loadMathBankQuestions() {
 }
 
 async function loadMoreMathBankQuestions() {
+  if (!requireStaffApiKey()) return;
   if (!mathBankHasMore.value || !mathBankNextCursor.value || mathBankLoadingMore.value) {
     return;
   }
@@ -868,6 +893,7 @@ async function loadMoreMathBankQuestions() {
 }
 
 async function ensureMathBankQuestionDetail(id) {
+  if (!requireStaffApiKey()) return null;
   const current = mathBankQuestionById.value[id];
   if (
     current &&
@@ -909,7 +935,8 @@ async function toggleMathBankQuestion(id) {
     return;
   }
 
-  await ensureMathBankQuestionDetail(id);
+  const detail = await ensureMathBankQuestionDetail(id);
+  if (!detail) return;
   selectedMathBankQuestionIds.value = [...selectedMathBankQuestionIds.value, id];
 }
 
@@ -950,6 +977,7 @@ function buildSelectedQuestionsText() {
 }
 
 async function copySelectedQuestions() {
+  if (!requireStaffApiKey()) return;
   await Promise.all(
     selectedMathBankQuestionIds.value.map((id) => ensureMathBankQuestionDetail(id)),
   );
