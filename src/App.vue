@@ -240,6 +240,14 @@
             >
               下載 Markdown
             </button>
+            <button
+              class="secondary-button full"
+              :disabled="jsonBuilding || !text.trim()"
+              type="button"
+              @click="downloadMathBankJson"
+            >
+              {{ jsonBuilding ? "轉換中" : "轉成題目格式 JSON" }}
+            </button>
           </div>
 
           <p v-if="message" class="message" :class="status">{{ message }}</p>
@@ -251,62 +259,6 @@
             </span>
           </div>
 
-          <section class="json-panel">
-            <div class="filter-panel-header">
-              <h2 class="section-title">JSON 設定</h2>
-              <button class="ghost-button compact" type="button" @click="loadMathBankTaxonomy">
-                重新讀取
-              </button>
-            </div>
-            <label>
-              <span class="field-label">年級</span>
-              <select v-model="jsonForm.grade_id" class="select-input" @change="jsonForm.unit_id = ''">
-                <option value="">選擇年級</option>
-                <option v-for="grade in mathBankGrades" :key="grade.id" :value="grade.id">
-                  {{ grade.name }}
-                </option>
-              </select>
-            </label>
-            <label>
-              <span class="field-label">單元</span>
-              <select v-model="jsonForm.unit_id" class="select-input">
-                <option value="">選擇單元</option>
-                <option v-for="unit in jsonFilteredUnits" :key="unit.id" :value="unit.id">
-                  {{ unit.name }}
-                </option>
-              </select>
-            </label>
-            <div class="filter-grid two">
-              <label>
-                <span class="field-label">題型</span>
-                <select v-model="jsonForm.default_type" class="select-input">
-                  <option value="calculation">計算題</option>
-                  <option value="choice">選擇題</option>
-                  <option value="fill">填充題</option>
-                  <option value="proof">證明題</option>
-                  <option value="application">應用題</option>
-                </select>
-              </label>
-              <label>
-                <span class="field-label">難度</span>
-                <select v-model="jsonForm.default_difficulty" class="select-input">
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="C">C</option>
-                  <option value="S">S</option>
-                </select>
-              </label>
-            </div>
-            <button
-              class="primary-button full"
-              :disabled="jsonBuilding || !text.trim()"
-              type="button"
-              @click="downloadMathBankJson"
-            >
-              {{ jsonBuilding ? "轉換中" : "下載題庫 JSON" }}
-            </button>
-            <p class="json-help">若文字無法切成題目，後端會回「未讀取到題目」。</p>
-          </section>
         </template>
       </aside>
 
@@ -315,8 +267,8 @@
           <div class="api-guide-panel">
             <div class="api-guide-header">
               <div>
-                <h2 class="section-title">API 串接</h2>
-                <p>同事下載 `math-bank-questions.json` 後，選一個環境複製執行即可。</p>
+                <h2 class="section-title">API 串接入題/下載題目</h2>
+                <p>入題使用 POST；下載題目使用 fetch / GET，可依環境複製指令。</p>
               </div>
               <span class="api-guide-badge">遇到重複題預設略過</span>
             </div>
@@ -334,7 +286,7 @@
                 />
               </label>
               <label class="api-key-field">
-                <span>API URL</span>
+                <span>入題 API URL</span>
                 <input
                   v-model="staffApiUrl"
                   autocomplete="off"
@@ -344,34 +296,65 @@
               </label>
             </div>
 
-            <ol class="api-step-list">
-              <li>輸入 Staff API Key。</li>
-              <li>把 JSON 檔放在要執行指令的資料夾，檔名維持 `math-bank-questions.json`。</li>
-              <li>進度列會顯示目前匯入第幾題；重複題會標示 `DUPLICATE`。</li>
-            </ol>
+            <section class="api-command-section">
+              <div class="api-section-heading">
+                <h3>入題 API 方式</h3>
+                <span>POST /staff/questions/</span>
+              </div>
+              <ol class="api-step-list">
+                <li>把 `math-bank-questions.json` 放在要執行指令的資料夾。</li>
+                <li>指令會逐題 POST 到入題 API。</li>
+                <li>進度列會顯示目前匯入第幾題；重複題會標示 `DUPLICATE`。</li>
+              </ol>
 
-            <div class="api-code-grid">
-              <section class="api-code-card">
-                <div class="code-header">
-                  <div>
-                    <strong>macOS</strong>
-                    <span>Terminal / zsh，含進度表</span>
+              <div class="api-code-grid">
+                <section class="api-code-card">
+                  <div class="code-header">
+                    <div>
+                      <strong>macOS 入題</strong>
+                      <span>Terminal / zsh</span>
+                    </div>
+                    <button class="ghost-button compact" type="button" @click="copyApiCommand(macTimelineImportCommand)">複製</button>
                   </div>
-                  <button class="ghost-button compact" type="button" @click="copyApiCommand(macTimelineImportCommand)">複製</button>
-                </div>
-                <pre>{{ macTimelineImportCommand }}</pre>
-              </section>
-              <section class="api-code-card">
-                <div class="code-header">
-                  <div>
-                    <strong>Windows</strong>
-                    <span>PowerShell，含進度表</span>
+                  <pre>{{ macTimelineImportCommand }}</pre>
+                </section>
+                <section class="api-code-card">
+                  <div class="code-header">
+                    <div>
+                      <strong>Windows 入題</strong>
+                      <span>PowerShell</span>
+                    </div>
+                    <button class="ghost-button compact" type="button" @click="copyApiCommand(windowsTimelineImportCommand)">複製</button>
                   </div>
-                  <button class="ghost-button compact" type="button" @click="copyApiCommand(windowsTimelineImportCommand)">複製</button>
-                </div>
-                <pre>{{ windowsTimelineImportCommand }}</pre>
-              </section>
-            </div>
+                  <pre>{{ windowsTimelineImportCommand }}</pre>
+                </section>
+              </div>
+            </section>
+
+            <section class="api-command-section">
+              <div class="api-section-heading">
+                <h3>Fetch 方式 / 下載題目</h3>
+                <span>GET /questions/search/</span>
+              </div>
+              <ol class="api-step-list">
+                <li>用 Staff API Key 讀取題目清單。</li>
+                <li>可調整 `GRADE_ID`、`UNIT_ID`、`DIFFICULTY`、`STATUS`。</li>
+                <li>結果會存成 `math-bank-fetch-results.json`。</li>
+              </ol>
+
+              <div class="api-code-grid single">
+                <section class="api-code-card">
+                  <div class="code-header">
+                    <div>
+                      <strong>Python requests Fetch</strong>
+                      <span>下載題目 JSON</span>
+                    </div>
+                    <button class="ghost-button compact" type="button" @click="copyApiCommand(pythonFetchQuestionsCommand)">複製</button>
+                  </div>
+                  <pre>{{ pythonFetchQuestionsCommand }}</pre>
+                </section>
+              </div>
+            </section>
           </div>
         </template>
 
@@ -595,7 +578,7 @@ const modes = [
     value: "text-extract",
     icon: "TXT",
     title: "圖片/PDF 轉文字",
-    description: "上傳 PDF 或圖片後轉成文字，可再下載題庫 JSON。",
+    description: "上傳 PDF 或圖片後轉成文字。",
     actionTitle: "開始轉文字",
     loadingTitle: "解析中",
   },
@@ -610,8 +593,8 @@ const modes = [
   {
     value: "api-guide",
     icon: "API",
-    title: "API 串接",
-    description: "複製 macOS / Windows 匯入指令。",
+    title: "API 串接入題/下載題目",
+    description: "複製入題與 fetch 下載題目的指令。",
     actionTitle: "查看指令",
     loadingTitle: "讀取中",
   },
@@ -621,6 +604,8 @@ const filterNoneValue = "__none__";
 const filterAllValue = "__all__";
 const mathBankPageSize = 30;
 const defaultStaffApiKey = "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
+const defaultJsonGradeId = "4e07e7fd-6c12-4a80-b715-464d0b486a71";
+const defaultJsonUnitId = "e886b5f1-571c-46b7-afb3-a9501024b8b9";
 
 const fileInput = ref(null);
 const file = ref(null);
@@ -646,12 +631,6 @@ const mathBankNextCursor = ref(null);
 const jsonBuilding = ref(false);
 const staffApiKey = ref(defaultStaffApiKey);
 const staffApiUrl = ref("http://localhost:8000/api/math-bank/staff/questions/");
-const jsonForm = ref({
-  grade_id: "",
-  unit_id: "",
-  default_type: "calculation",
-  default_difficulty: "A",
-});
 const mathBankFilters = ref({
   search: "",
   grade_id: filterNoneValue,
@@ -673,12 +652,6 @@ const filteredMathBankUnits = computed(() => {
   if (mathBankFilters.value.grade_id === filterAllValue) return mathBankUnits.value;
   return mathBankUnits.value.filter(
     (unit) => unit.grade?.id === mathBankFilters.value.grade_id,
-  );
-});
-const jsonFilteredUnits = computed(() => {
-  if (!jsonForm.value.grade_id) return [];
-  return mathBankUnits.value.filter(
-    (unit) => unit.grade?.id === jsonForm.value.grade_id,
   );
 });
 const hasMathBankConditions = computed(() => Boolean(
@@ -1106,22 +1079,17 @@ async function downloadMathBankJson() {
     message.value = "請先有解析文字。";
     return;
   }
-  if (!jsonForm.value.grade_id || !jsonForm.value.unit_id) {
-    status.value = "error";
-    message.value = "請選擇年級與單元。";
-    return;
-  }
 
   jsonBuilding.value = true;
   status.value = "loading";
-  message.value = "正在轉換題庫 JSON...";
+  message.value = "正在判斷文字是否可轉成題目格式 JSON...";
 
   const result = await buildMathBankJson({
     text: text.value,
-    gradeId: jsonForm.value.grade_id,
-    unitId: jsonForm.value.unit_id,
-    defaultType: jsonForm.value.default_type,
-    defaultDifficulty: jsonForm.value.default_difficulty,
+    gradeId: defaultJsonGradeId,
+    unitId: defaultJsonUnitId,
+    defaultType: "calculation",
+    defaultDifficulty: "A",
   });
 
   if (result.success) {
@@ -1130,7 +1098,7 @@ async function downloadMathBankJson() {
     message.value = `已產生 ${result.payload?.questions?.length || 0} 題 JSON。`;
   } else {
     status.value = "error";
-    message.value = result.error || "題庫 JSON 轉換失敗。";
+    message.value = result.error || "題目格式 JSON 轉換失敗。";
   }
 
   jsonBuilding.value = false;
@@ -1138,6 +1106,13 @@ async function downloadMathBankJson() {
 
 const apiKeyForCommand = computed(() => staffApiKey.value.trim() || "請輸入_staff_api_key");
 const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "http://localhost:8000/api/math-bank/staff/questions/");
+const fetchApiUrlForCommand = computed(() => {
+  const importUrl = apiUrlForCommand.value;
+  if (importUrl.includes("/staff/questions/")) {
+    return importUrl.replace("/staff/questions/", "/questions/search/");
+  }
+  return "http://localhost:8000/api/math-bank/questions/search/";
+});
 
 function copyApiCommand(command) {
   if (!staffApiKey.value.trim()) {
@@ -1242,6 +1217,35 @@ foreach ($Question in $Questions) {
 
 $Elapsed = [int]((Get-Date) - $Start).TotalSeconds
 Write-Host "完成：成功 $Ok / 重複略過 $Skip / 失敗 $Fail / 耗時 $Elapsed 秒"`);
+
+const pythonFetchQuestionsCommand = computed(() => String.raw`import json
+import requests
+
+API_KEY = "${apiKeyForCommand.value}"
+API_URL = "${fetchApiUrlForCommand.value}"
+OUTPUT = "math-bank-fetch-results.json"
+
+params = {
+    "limit": 50,
+    "grade_id": "",
+    "unit_id": "",
+    "difficulty": "",
+    "status": "",
+}
+params = {key: value for key, value in params.items() if value != ""}
+
+response = requests.get(
+    API_URL,
+    headers={"X-API-KEY": API_KEY, "Accept": "application/json"},
+    params=params,
+    timeout=30,
+)
+response.raise_for_status()
+
+with open(OUTPUT, "w", encoding="utf-8") as file:
+    json.dump(response.json(), file, ensure_ascii=False, indent=2)
+
+print(f"已下載題目 JSON：{OUTPUT}")`);
 
 function handleFile(selectedFile) {
   if (!selectedFile) return;

@@ -160,7 +160,6 @@ h1 {
 .output-panel,
 .filter-panel,
 .selection-panel,
-.json-panel,
 .api-guide-panel,
 .question-bank-toolbar,
 .empty-state,
@@ -198,7 +197,6 @@ h1 {
 
 .filter-panel,
 .selection-panel,
-.json-panel,
 .api-guide-panel {
   display: grid;
   gap: 12px;
@@ -313,7 +311,7 @@ h1 {
 
 .download-button-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -351,8 +349,7 @@ h1 {
   grid-template-columns: 1fr 1fr;
 }
 
-.filter-grid label,
-.json-panel label {
+.filter-grid label {
   display: grid;
   gap: 6px;
 }
@@ -428,17 +425,6 @@ h1 {
   line-height: 1.65;
 }
 
-.json-panel {
-  background: #fbfcfd;
-}
-
-.json-help {
-  margin: 0;
-  color: #6b7280;
-  font-size: 12px;
-  font-weight: 750;
-  line-height: 1.55;
-}
 
 .selection-panel {
   background: #222;
@@ -711,6 +697,35 @@ h1 {
   border-color: #202124;
 }
 
+.api-command-section {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e0e3e7;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfd;
+}
+
+.api-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.api-section-heading h3 {
+  margin: 0;
+  color: #202124;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.api-section-heading span {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .api-step-list {
   display: grid;
   gap: 6px;
@@ -726,6 +741,10 @@ h1 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+
+.api-code-grid.single {
+  grid-template-columns: 1fr;
 }
 
 .api-code-card {
