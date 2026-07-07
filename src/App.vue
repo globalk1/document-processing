@@ -3,7 +3,7 @@
     <header class="app-header">
       <div class="title-group">
         <div class="eyebrow">寰宇教育｜教務部內部使用</div>
-        <h1>題庫文件工具</h1>
+        <h1>{{ selectedMode.title }}</h1>
       </div>
       <div class="header-actions">
         <span class="app-version">v{{ APP_VERSION }}</span>
