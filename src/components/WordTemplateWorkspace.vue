@@ -321,7 +321,7 @@
                   :value="questionGradeId(question)"
                   @change="setQuestionMathBank(question, { grade_id: $event.target.value, unit_id: '' })"
                 >
-                  <option value="">使用左側年級</option>
+                  <option value="">未設定本題年級</option>
                   <option
                     v-for="grade in grades"
                     :key="getRecordId(grade)"
@@ -339,7 +339,9 @@
                   :disabled="!filteredQuestionUnits(question).length"
                   @change="setQuestionMathBank(question, { unit_id: $event.target.value })"
                 >
-                  <option value="">使用左側單元</option>
+                  <option value="">
+                    {{ questionGradeId(question) ? "未設定本題單元" : "先選本題年級" }}
+                  </option>
                   <option
                     v-for="unit in filteredQuestionUnits(question)"
                     :key="getRecordId(unit)"
@@ -403,7 +405,7 @@
             <label class="field-label">
               詳解（每行一段）
               <textarea
-                class="textarea compact-textarea"
+                class="textarea compact-textarea solution-textarea"
                 :value="solutionText(question)"
                 @input="setQuestionSolution(question, $event.target.value)"
               ></textarea>
@@ -875,7 +877,7 @@ function questionUnitId(question) {
 }
 
 function filteredQuestionUnits(question) {
-  const gradeId = questionGradeId(question) || importSettings.gradeId;
+  const gradeId = questionGradeId(question);
   if (!gradeId || gradeId === NEW_GRADE_VALUE) return [];
   return units.value.filter((unit) => getUnitGradeId(unit) === gradeId);
 }

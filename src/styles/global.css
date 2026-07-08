@@ -1009,6 +1009,10 @@ h1 {
   min-height: 120px;
 }
 
+.solution-textarea {
+  min-height: 180px;
+}
+
 .word-option-list {
   display: grid;
   gap: 8px;
