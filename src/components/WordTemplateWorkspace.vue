@@ -189,6 +189,62 @@
         </div>
       </div>
 
+      <div v-if="renderPreviewDocument" class="word-preview-board">
+        <header class="word-preview-board-header">
+          <div>
+            <span>渲染預覽</span>
+            <strong>{{ renderPreviewDocument.title || "未命名文件" }}</strong>
+          </div>
+          <span>{{ wordStats.questions }} 題</span>
+        </header>
+
+        <section
+          v-for="(section, sectionIndex) in renderPreviewDocument.sections"
+          :key="`preview-section-${sectionIndex}`"
+          class="word-preview-section"
+        >
+          <h3 v-if="section.title">{{ section.title }}</h3>
+          <article
+            v-for="(question, questionIndex) in section.questions"
+            :key="`preview-question-${sectionIndex}-${questionIndex}`"
+            class="word-preview-card"
+          >
+            <header>
+              <strong>第 {{ question.number || questionIndex + 1 }} 題</strong>
+              <span>
+                {{ formatQuestionType(questionType(question)) }} ·
+                {{ formatQuestionDifficulty(questionDifficulty(question)) }}
+              </span>
+            </header>
+
+            <p v-if="questionSharedContextText(question)" class="word-preview-context">
+              <MathText :content="questionSharedContextText(question)" fallback="" />
+            </p>
+
+            <p>
+              <MathText :content="question.stem" />
+            </p>
+
+            <ol v-if="question.options?.length" class="word-preview-options">
+              <li v-for="(option, optionIndex) in question.options" :key="`preview-option-${optionIndex}`">
+                <span>({{ option.label || optionIndex + 1 }})</span>
+                <MathText :content="option.text" fallback="" />
+              </li>
+            </ol>
+
+            <div v-if="question.answer" class="word-preview-detail">
+              <strong>答案</strong>
+              <MathText :content="question.answer" fallback="" />
+            </div>
+
+            <div v-if="solutionText(question).trim()" class="word-preview-detail">
+              <strong>詳解</strong>
+              <MathText :content="solutionText(question)" fallback="" />
+            </div>
+          </article>
+        </section>
+      </div>
+
       <textarea
         v-model="wordJsonText"
         class="textarea json-textarea"
@@ -363,7 +419,7 @@
           </button>
         </section>
       </div>
-      <div v-else class="empty-state">
+      <div v-if="!renderPreviewDocument" class="empty-state">
         <strong>尚未解析題目</strong>
         <span>上傳 JSON 或 DOCX 後，可在這裡校正再套版或入庫。</span>
       </div>
@@ -373,6 +429,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from "vue";
+import MathText from "./MathText.vue";
 import {
   createStaffMathBankGrade,
   createStaffMathBankQuestion,
@@ -401,6 +458,18 @@ const FALLBACK_TEMPLATES = [
 const NEW_GRADE_VALUE = "__new_grade__";
 const NEW_UNIT_VALUE = "__new_unit__";
 const PER_QUESTION_VALUE = "__per_question__";
+const QUESTION_TYPE_LABELS = {
+  calculation: "計算題",
+  choice: "選擇題",
+  fill: "填充題",
+  proof: "證明題",
+};
+const QUESTION_DIFFICULTY_LABELS = {
+  A: "A 基礎型",
+  B: "B 進階型",
+  C: "C 挑戰型",
+  S: "S 究極型",
+};
 
 const localStaffApiKey = ref(props.staffApiKey);
 const fileInput = ref(null);
@@ -446,6 +515,7 @@ const wordStats = computed(() => {
     assets: document?.assets?.length || 0,
   };
 });
+const renderPreviewDocument = computed(() => getCurrentDocument({ silent: true }));
 
 onMounted(async () => {
   const result = await fetchWordTemplates();
@@ -732,6 +802,14 @@ function questionDifficulty(question) {
   return question.math_bank?.difficulty || "A";
 }
 
+function formatQuestionType(type) {
+  return QUESTION_TYPE_LABELS[type] || type || "-";
+}
+
+function formatQuestionDifficulty(difficulty) {
+  return QUESTION_DIFFICULTY_LABELS[difficulty] || difficulty || "-";
+}
+
 function ensureQuestionMathBank(question) {
   if (!question.math_bank) question.math_bank = {};
   return question.math_bank;
@@ -749,6 +827,22 @@ function solutionText(question) {
   return Array.isArray(question.solution)
     ? question.solution.join("\n")
     : String(question.solution || "");
+}
+
+function questionSharedContextText(question) {
+  return arrayText(question?.shared_context);
+}
+
+function arrayText(value) {
+  if (!Array.isArray(value)) return String(value || "").trim();
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      return item?.text || item?.content || "";
+    })
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 function setQuestionSolution(question, value) {
