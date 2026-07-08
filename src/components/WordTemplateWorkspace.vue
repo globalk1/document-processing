@@ -1,7 +1,7 @@
 <template>
   <section class="feature-workspace word-template-workspace">
     <aside class="control-panel">
-      <h2 class="section-title">Word 套版與入資料庫</h2>
+      <h2 class="section-title">Word 套版＋公開草稿入題</h2>
 
       <label class="api-key-field">
         <span>Staff API Key</span>
@@ -82,7 +82,7 @@
       </div>
 
       <section v-if="wordDocument" class="action-box">
-        <h3>套版</h3>
+        <h3>段考卷套版</h3>
         <label class="field-label">
           下載檔名
           <input v-model="outputFilename" class="text-input" type="text" />
@@ -101,7 +101,7 @@
       </section>
 
       <section v-if="wordDocument" class="action-box">
-        <h3>入資料庫</h3>
+        <h3>公開草稿大量入題</h3>
         <div class="fixed-meta-line">
           <span>狀態：草稿</span>
           <span>可見性：公開</span>
@@ -182,76 +182,23 @@
 
     <section class="output-panel">
       <div class="panel-header">
-        <h2 class="section-title">題目預覽</h2>
+        <h2 class="section-title">題目編輯與預覽</h2>
         <div class="icon-group">
           <button class="icon-button" title="複製 JSON" type="button" @click="copyJson">⧉</button>
           <button class="icon-button" title="套用 JSON 到編輯器" type="button" @click="syncPreview">↻</button>
         </div>
       </div>
 
-      <div v-if="renderPreviewDocument" class="word-preview-board">
-        <header class="word-preview-board-header">
+      <section v-if="wordDocument" class="word-workflow-section">
+        <header class="word-workflow-header">
           <div>
-            <span>渲染預覽</span>
-            <strong>{{ renderPreviewDocument.title || "未命名文件" }}</strong>
+            <span>01</span>
+            <h3>公開草稿題目清單</h3>
           </div>
-          <span>{{ wordStats.questions }} 題</span>
+          <strong>{{ wordStats.questions }} 題</strong>
         </header>
 
-        <section
-          v-for="(section, sectionIndex) in renderPreviewDocument.sections"
-          :key="`preview-section-${sectionIndex}`"
-          class="word-preview-section"
-        >
-          <h3 v-if="section.title">{{ section.title }}</h3>
-          <article
-            v-for="(question, questionIndex) in section.questions"
-            :key="`preview-question-${sectionIndex}-${questionIndex}`"
-            class="word-preview-card"
-          >
-            <header>
-              <strong>第 {{ question.number || questionIndex + 1 }} 題</strong>
-              <span>
-                {{ formatQuestionType(questionType(question)) }} ·
-                {{ formatQuestionDifficulty(questionDifficulty(question)) }}
-              </span>
-            </header>
-
-            <p v-if="questionSharedContextText(question)" class="word-preview-context">
-              <MathText :content="questionSharedContextText(question)" fallback="" />
-            </p>
-
-            <p>
-              <MathText :content="question.stem" />
-            </p>
-
-            <ol v-if="question.options?.length" class="word-preview-options">
-              <li v-for="(option, optionIndex) in question.options" :key="`preview-option-${optionIndex}`">
-                <span>({{ option.label || optionIndex + 1 }})</span>
-                <MathText :content="option.text" fallback="" />
-              </li>
-            </ol>
-
-            <div v-if="question.answer" class="word-preview-detail">
-              <strong>答案</strong>
-              <MathText :content="question.answer" fallback="" />
-            </div>
-
-            <div v-if="solutionText(question).trim()" class="word-preview-detail">
-              <strong>詳解</strong>
-              <MathText :content="solutionText(question)" fallback="" />
-            </div>
-          </article>
-        </section>
-      </div>
-
-      <textarea
-        v-model="wordJsonText"
-        class="textarea json-textarea"
-        placeholder="解析後的題目 JSON 會出現在這裡，可直接修改後再套版或入庫。"
-      ></textarea>
-
-      <div v-if="wordDocument" class="word-editor-shell">
+        <div class="word-editor-shell">
         <label class="field-label">
           文件標題
           <input
@@ -288,15 +235,26 @@
                 <strong>第 {{ question.number || "?" }} 題</strong>
                 <span>{{ question.answer ? `答案 ${question.answer}` : "答案未填" }}</span>
               </div>
-              <button
-                class="ghost-button compact"
-                type="button"
-                @click="removeQuestion(section, questionIndex)"
-              >
-                刪除
-              </button>
+              <div class="word-question-actions">
+                <label class="question-select-toggle">
+                  <input
+                    type="checkbox"
+                    :checked="isQuestionSelected(sectionIndex, questionIndex)"
+                    @change="setQuestionSelected(sectionIndex, questionIndex, $event.target.checked)"
+                  />
+                  <span>入庫</span>
+                </label>
+                <button
+                  class="ghost-button compact danger"
+                  type="button"
+                  @click="removeQuestion(section, questionIndex)"
+                >
+                  刪除
+                </button>
+              </div>
             </header>
 
+            <div class="word-question-edit-panel">
             <div class="filter-grid two">
               <label>
                 <span class="field-label">題號</span>
@@ -412,13 +370,47 @@
                 @input="setQuestionSolution(question, $event.target.value)"
               ></textarea>
             </label>
+            </div>
+
+            <div class="word-question-preview-panel">
+              <header class="word-question-preview-title">本題預覽</header>
+              <section>
+                <strong>題目</strong>
+                <p><MathText :content="buildQuestionPrompt(question)" fallback="尚未輸入題目" /></p>
+              </section>
+              <section>
+                <strong>答案</strong>
+                <p><MathText :content="question.answer" fallback="尚未輸入答案" /></p>
+              </section>
+              <section>
+                <strong>詳解</strong>
+                <p><MathText :content="solutionText(question)" fallback="尚未輸入詳解" /></p>
+              </section>
+            </div>
           </article>
 
-          <button class="secondary-button full" type="button" @click="addQuestion(section)">
+          <button class="secondary-button full" type="button" @click="addQuestion(section, sectionIndex)">
             新增題目
           </button>
         </section>
-      </div>
+        </div>
+      </section>
+
+      <section class="word-workflow-section">
+        <header class="word-workflow-header">
+          <div>
+            <span>02</span>
+            <h3>JSON 編輯</h3>
+          </div>
+        </header>
+
+        <textarea
+          v-model="wordJsonText"
+          class="textarea json-textarea"
+          placeholder="解析後的題目 JSON 會出現在這裡，可直接修改後再套版或入庫。"
+        ></textarea>
+      </section>
+
       <div v-if="!renderPreviewDocument" class="empty-state">
         <strong>尚未解析題目</strong>
         <span>上傳 JSON 或 DOCX 後，可在這裡校正再套版或入庫。</span>
@@ -484,6 +476,8 @@ const wordStatus = ref("idle");
 const wordMessage = ref("");
 const wordDocument = ref(null);
 const wordJsonText = ref("");
+const questionModes = ref({});
+const selectedQuestions = ref({});
 const outputFilename = ref("exam-paper.docx");
 const grades = ref([]);
 const units = ref([]);
@@ -539,6 +533,8 @@ function handleFile(selectedFile) {
   wordFile.value = selectedFile;
   wordDocument.value = null;
   wordJsonText.value = "";
+  questionModes.value = {};
+  selectedQuestions.value = {};
   outputFilename.value = `${selectedFile.name.replace(/\.(docx|json)$/i, "")}-段考卷.docx`;
   wordStatus.value = "idle";
   wordMessage.value = "";
@@ -576,6 +572,8 @@ async function parseWord() {
 
   wordDocument.value = normalizeDocument(result.document);
   wordJsonText.value = JSON.stringify(wordDocument.value, null, 2);
+  questionModes.value = {};
+  selectedQuestions.value = {};
   applyFirstQuestionMetadata();
   wordStatus.value = "success";
   wordMessage.value = "題目解析完成。";
@@ -620,7 +618,7 @@ async function importQuestions() {
   try {
     const gradeId = await ensureGrade();
     const unitId = await ensureUnit(gradeId);
-    const payload = buildMathBankPayload(document, {
+    const payload = buildMathBankPayload(getSelectedImportDocument(document), {
       grade_id: gradeId,
       unit_id: unitId,
       type: importSettings.type === PER_QUESTION_VALUE ? undefined : importSettings.type,
@@ -654,9 +652,9 @@ function validateImport(document) {
     importMessage.value = "請先輸入 Staff API Key。";
     return false;
   }
-  if (!getDocumentQuestions(document).length) {
+  if (!getDocumentQuestions(getSelectedImportDocument(document)).length) {
     importStatus.value = "error";
-    importMessage.value = "至少需要一題才能入資料庫。";
+    importMessage.value = "至少需要勾選一題才能入資料庫。";
     return false;
   }
   if (!importSettings.gradeId) {
@@ -774,6 +772,8 @@ function syncPreview() {
   if (!document) return;
   wordDocument.value = document;
   wordJsonText.value = JSON.stringify(document, null, 2);
+  questionModes.value = {};
+  selectedQuestions.value = {};
   wordStatus.value = "success";
   wordMessage.value = "預覽已更新。";
 }
@@ -786,6 +786,32 @@ function downloadEditedJson() {
 
 function copyJson() {
   if (wordJsonText.value) navigator.clipboard?.writeText(wordJsonText.value);
+}
+
+function questionKey(sectionIndex, questionIndex) {
+  return `${sectionIndex}-${questionIndex}`;
+}
+
+function questionMode(sectionIndex, questionIndex) {
+  return questionModes.value[questionKey(sectionIndex, questionIndex)] || "preview";
+}
+
+function setQuestionMode(sectionIndex, questionIndex, mode) {
+  questionModes.value = {
+    ...questionModes.value,
+    [questionKey(sectionIndex, questionIndex)]: mode,
+  };
+}
+
+function isQuestionSelected(sectionIndex, questionIndex) {
+  return selectedQuestions.value[questionKey(sectionIndex, questionIndex)] !== false;
+}
+
+function setQuestionSelected(sectionIndex, questionIndex, checked) {
+  selectedQuestions.value = {
+    ...selectedQuestions.value,
+    [questionKey(sectionIndex, questionIndex)]: checked,
+  };
 }
 
 function syncJsonFromDocument() {
@@ -865,7 +891,7 @@ function removeOption(question, optionIndex) {
   syncJsonFromDocument();
 }
 
-function addQuestion(section) {
+function addQuestion(section, sectionIndex) {
   const nextNumber =
     Math.max(
       0,
@@ -873,13 +899,17 @@ function addQuestion(section) {
         (question) => Number(question.number) || 0,
       ),
     ) + 1;
+  const nextIndex = section.questions.length;
   section.questions.push(createEmptyQuestion(String(nextNumber)));
   syncJsonFromDocument();
+  setQuestionMode(sectionIndex, nextIndex, "edit");
 }
 
 function removeQuestion(section, questionIndex) {
   if (!window.confirm("確定要刪除這一題嗎？")) return;
   section.questions.splice(questionIndex, 1);
+  questionModes.value = {};
+  selectedQuestions.value = {};
   syncJsonFromDocument();
 }
 
@@ -941,6 +971,18 @@ function applyFirstQuestionMetadata() {
 
 function getDocumentQuestions(document) {
   return (document?.sections || []).flatMap((section) => section.questions || []);
+}
+
+function getSelectedImportDocument(document) {
+  return {
+    ...document,
+    sections: (document?.sections || []).map((section, sectionIndex) => ({
+      ...section,
+      questions: (section.questions || []).filter((_, questionIndex) =>
+        isQuestionSelected(sectionIndex, questionIndex),
+      ),
+    })),
+  };
 }
 
 function buildMathBankPayload(document, overrides = {}) {

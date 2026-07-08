@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.4.1";
 
 const STORAGE_KEY = "huanyu-document-processing-seen-version";
 const SWEETALERT_SCRIPT_URL =
@@ -11,7 +11,8 @@ const RELEASE_NOTES = [
   "筆跡去除新增手動框選消除與還原，可先預覽再下載處理後檔案。",
   "圖片 / PDF 轉文字改用 OCR 解析，保留下載 TXT、Markdown 與轉題目 JSON。",
   "Word 套版支援匯入題目 JSON 或 Word，編輯後可下載新版 JSON 並產生套版 Word。",
-  "入資料庫改為大量公開草稿入題，可逐題選擇是否匯入並補年級、單元、難度等屬性。",
+  "Word 套版與入資料庫區塊改得更明確，每題可切換預覽、編輯或直接刪除。",
+  "入資料庫固定大量公開草稿入題，可補年級、單元、題型、難度等屬性。",
 ];
 
 let sweetAlertPromise;
