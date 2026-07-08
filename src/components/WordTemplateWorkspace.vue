@@ -321,7 +321,7 @@
                   :value="questionGradeId(question)"
                   @change="setQuestionMathBank(question, { grade_id: $event.target.value, unit_id: '' })"
                 >
-                  <option value="">未設定本題年級</option>
+                  <option value="">使用左側年級</option>
                   <option
                     v-for="grade in grades"
                     :key="getRecordId(grade)"
@@ -340,7 +340,7 @@
                   @change="setQuestionMathBank(question, { unit_id: $event.target.value })"
                 >
                   <option value="">
-                    {{ questionGradeId(question) ? "未設定本題單元" : "先選本題年級" }}
+                    {{ effectiveQuestionGradeId(question) ? "使用左側單元" : "先選年級" }}
                   </option>
                   <option
                     v-for="unit in filteredQuestionUnits(question)"
@@ -877,9 +877,13 @@ function questionUnitId(question) {
 }
 
 function filteredQuestionUnits(question) {
-  const gradeId = questionGradeId(question);
+  const gradeId = effectiveQuestionGradeId(question);
   if (!gradeId || gradeId === NEW_GRADE_VALUE) return [];
   return units.value.filter((unit) => getUnitGradeId(unit) === gradeId);
+}
+
+function effectiveQuestionGradeId(question) {
+  return questionGradeId(question) || importSettings.gradeId;
 }
 
 function formatQuestionType(type) {
