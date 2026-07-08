@@ -1,8 +1,7 @@
 const PDF_LIB_URL =
   "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
-const MAX_PDF_PAGES = 400;
+const MAX_PDF_PAGES = 20;
 const MAX_ATTEMPTS_PER_PAGE = 3;
-const MAX_CONCURRENT_PAGE_REQUESTS = 2;
 
 let pdfLibPromise;
 
@@ -56,19 +55,6 @@ function shouldRetry(result) {
   return !result?.status || result.status === 429 || result.status >= 500;
 }
 
-function joinedContiguousText(outputs) {
-  const ready = [];
-  for (const output of outputs) {
-    if (!output) break;
-    ready.push(output);
-  }
-  return ready.join("\n\n");
-}
-
-function shouldSplitForOcr(result) {
-  return Boolean(result?.diagnostics?.requires_page_split);
-}
-
 export function isPdfFile(file) {
   return (
     file?.type === "application/pdf" ||
@@ -76,24 +62,28 @@ export function isPdfFile(file) {
   );
 }
 
-export async function extractPdfAutomatically({
-  file,
-  requestExtract,
-  onProgress,
-  onPartialText,
-}) {
-  onProgress("");
-  const initialResult = await requestExtract(file, "auto");
-  if (initialResult.success || !shouldSplitForOcr(initialResult)) {
-    return initialResult;
-  }
+export async function validatePdfPageLimit(file) {
+  try {
+    const { PDFDocument } = await loadPdfLib();
+    const sourcePdf = await PDFDocument.load(await file.arrayBuffer());
+    const totalPages = sourcePdf.getPageCount();
 
-  return extractAccuratePdfInPages({
-    file,
-    requestExtract,
-    onProgress,
-    onPartialText,
-  });
+    if (totalPages > MAX_PDF_PAGES) {
+      return {
+        success: false,
+        pageCount: totalPages,
+        error: `PDF 共 ${totalPages} 頁，目前最多支援 ${MAX_PDF_PAGES} 頁。`,
+      };
+    }
+
+    return { success: true, pageCount: totalPages };
+  } catch (error) {
+    console.error("Unable to inspect PDF page count:", error);
+    return {
+      success: false,
+      error: "無法讀取 PDF 頁數，請確認檔案未加密或損壞。",
+    };
+  }
 }
 
 export async function extractAccuratePdfInPages({
@@ -102,8 +92,19 @@ export async function extractAccuratePdfInPages({
   onProgress,
   onPartialText,
 }) {
+  onProgress("正在檢查 PDF 文字層...");
+  const fastResult = await requestExtract(file, "fast");
+  if (fastResult.success && fastResult.text?.trim()) return fastResult;
+
+  if (
+    fastResult.status !== 422 &&
+    fastResult.code !== "no_text_extracted"
+  ) {
+    return fastResult;
+  }
+
   try {
-    onProgress("");
+    onProgress("正在準備 PDF 分頁...");
     const { PDFDocument } = await loadPdfLib();
     const sourcePdf = await PDFDocument.load(await file.arrayBuffer());
     const totalPages = sourcePdf.getPageCount();
@@ -115,11 +116,8 @@ export async function extractAccuratePdfInPages({
       };
     }
 
-    const outputs = Array(totalPages).fill("");
-    let nextPageIndex = 0;
-    let failure = null;
-
-    const extractPage = async (pageIndex) => {
+    const outputs = [];
+    for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
       const pageNumber = pageIndex + 1;
       const pagePdf = await PDFDocument.create();
       const [copiedPage] = await pagePdf.copyPages(sourcePdf, [pageIndex]);
@@ -133,61 +131,34 @@ export async function extractAccuratePdfInPages({
 
       let pageResult;
       for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PAGE; attempt += 1) {
-        onProgress("");
-        pageResult = await requestExtract(pageFile, "auto");
+        onProgress(
+          attempt === 1
+            ? `正在解析第 ${pageNumber} / ${totalPages} 頁...`
+            : `第 ${pageNumber} 頁重試中（${attempt}/${MAX_ATTEMPTS_PER_PAGE}）...`,
+        );
+        pageResult = await requestExtract(pageFile, "accurate");
         if (pageResult.success || !shouldRetry(pageResult)) break;
         await sleep(1000 * attempt);
       }
 
       if (!pageResult?.success) {
-        const partialText = joinedContiguousText(outputs).trim();
+        const partialText = outputs.join("\n\n").trim();
         if (partialText) onPartialText(partialText);
-        const firstMissingPage = outputs.findIndex((output) => !output);
-        const preservedPageCount =
-          firstMissingPage === -1 ? outputs.length : firstMissingPage;
         return {
           ...pageResult,
-          success: false,
           error:
             `第 ${pageNumber} / ${totalPages} 頁解析失敗，` +
-            `已保留前 ${preservedPageCount} 頁。` +
+            `已保留前 ${pageNumber - 1} 頁。` +
             (pageResult?.error ? ` ${pageResult.error}` : ""),
         };
       }
 
       const pageText = normalizePageMarker(pageResult.text, pageNumber);
-      if (pageText) outputs[pageIndex] = pageText;
-      onPartialText(joinedContiguousText(outputs));
-    };
+      if (pageText) outputs.push(pageText);
+      onPartialText(outputs.join("\n\n"));
+    }
 
-    const worker = async () => {
-      while (!failure) {
-        const pageIndex = nextPageIndex;
-        nextPageIndex += 1;
-        if (pageIndex >= totalPages) return;
-
-        try {
-          const pageFailure = await extractPage(pageIndex);
-          if (pageFailure) {
-            failure = pageFailure;
-            return;
-          }
-        } catch (error) {
-          failure = error;
-          return;
-        }
-      }
-    };
-
-    const workers = Array.from(
-      { length: Math.min(MAX_CONCURRENT_PAGE_REQUESTS, totalPages) },
-      () => worker(),
-    );
-    await Promise.all(workers);
-
-    if (failure) return failure;
-
-    return { success: true, text: outputs.filter(Boolean).join("\n\n") };
+    return { success: true, text: outputs.join("\n\n") };
   } catch (error) {
     console.error("Unable to split PDF for extraction:", error);
     return {
