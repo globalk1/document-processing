@@ -25,7 +25,13 @@
       </button>
     </nav>
 
+    <HandwritingWorkspace v-if="isHandwritingMode" />
+    <WordTemplateWorkspace
+      v-else-if="isWordTemplateMode"
+      :staff-api-key="staffApiKey"
+    />
     <section
+      v-else
       class="workspace"
       :class="{
         'question-bank-workspace': isQuestionBankMode,
@@ -585,8 +591,10 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
+import HandwritingWorkspace from "./components/HandwritingWorkspace.vue";
 import MathText from "./components/MathText.vue";
 import SolutionReview from "./components/SolutionReview.vue";
+import WordTemplateWorkspace from "./components/WordTemplateWorkspace.vue";
 import {
   buildMathBankJson,
   extractPdfText,
@@ -608,11 +616,27 @@ import {
 
 const modes = [
   {
+    value: "handwriting",
+    icon: "消",
+    title: "筆跡去除",
+    description: "去除考卷上的筆跡並下載乾淨 PDF。",
+    actionTitle: "去除筆跡",
+    loadingTitle: "處理中",
+  },
+  {
     value: "text-extract",
     icon: "TXT",
     title: "圖片/PDF 轉文字",
     description: "上傳 PDF 或圖片後轉成文字。",
     actionTitle: "開始轉文字",
+    loadingTitle: "解析中",
+  },
+  {
+    value: "word-template",
+    icon: "W",
+    title: "Word 套版＋入資料庫",
+    description: "JSON / Word 題目套版，並批量新增公開草稿。",
+    actionTitle: "解析題目",
     loadingTitle: "解析中",
   },
   {
@@ -642,7 +666,7 @@ const defaultJsonUnitId = "e886b5f1-571c-46b7-afb3-a9501024b8b9";
 
 const fileInput = ref(null);
 const file = ref(null);
-const mode = ref("text-extract");
+const mode = ref("handwriting");
 const text = ref("");
 const solutionDraft = ref("");
 const status = ref("idle");
@@ -679,6 +703,8 @@ let mathBankSearchTimer = null;
 
 const isQuestionBankMode = computed(() => mode.value === "question-bank");
 const isApiGuideMode = computed(() => mode.value === "api-guide");
+const isHandwritingMode = computed(() => mode.value === "handwriting");
+const isWordTemplateMode = computed(() => mode.value === "word-template");
 const hasStaffApiKey = computed(() => Boolean(staffApiKey.value.trim()));
 const isBusy = computed(() => status.value === "loading");
 const selectedMode = computed(
