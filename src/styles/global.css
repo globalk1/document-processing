@@ -93,6 +93,12 @@ h1 {
   color: #9f1d1d;
 }
 
+.status-pill.maintenance {
+  border-color: #efd492;
+  background: #fff8e6;
+  color: #7a4f00;
+}
+
 .tab-bar {
   display: flex;
   align-items: center;
@@ -139,6 +145,64 @@ h1 {
 .tab-button.active .tab-icon {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
+}
+
+.tab-badge {
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #fff8e6;
+  color: #7a4f00;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.tab-button.active .tab-badge {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.maintenance-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 220px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  padding: 24px;
+  background: #fff;
+}
+
+.maintenance-panel div {
+  display: grid;
+  gap: 8px;
+}
+
+.maintenance-panel h2 {
+  margin: 0;
+  color: #202124;
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.maintenance-panel p {
+  max-width: 560px;
+  margin: 0;
+  color: #5f6673;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.7;
+}
+
+.maintenance-kicker {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #fff8e6;
+  color: #7a4f00;
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .workspace {
@@ -1489,6 +1553,7 @@ h1 {
   .app-header,
   .draft-actions,
   .api-guide-header,
+  .maintenance-panel,
   .panel-header,
   .preview-toolbar,
   .preview-status-bar,
@@ -1511,8 +1576,13 @@ h1 {
 
   .control-panel,
   .output-panel,
-  .api-guide-panel {
+  .api-guide-panel,
+  .maintenance-panel {
     padding: 12px;
+  }
+
+  .maintenance-panel .primary-inline-button {
+    width: 100%;
   }
 
   .drop-zone {

@@ -7,7 +7,9 @@
       </div>
       <div class="header-actions">
         <span class="app-version">v{{ APP_VERSION }}</span>
-        <span class="status-pill" :class="status">{{ selectedMode.title }}</span>
+        <span class="status-pill" :class="selectedMode.paused ? 'maintenance' : status">
+          {{ selectedMode.paused ? "開發中" : selectedMode.title }}
+        </span>
       </div>
     </header>
 
@@ -22,10 +24,20 @@
       >
         <span class="tab-icon">{{ item.icon }}</span>
         <span>{{ item.title }}</span>
+        <span v-if="item.badge" class="tab-badge">{{ item.badge }}</span>
       </button>
     </nav>
 
-    <HandwritingWorkspace v-if="isHandwritingMode" />
+    <section v-if="isHandwritingMode" class="maintenance-panel" aria-live="polite">
+      <div>
+        <span class="maintenance-kicker">開發中</span>
+        <h2>筆跡去除暫停使用</h2>
+        <p>這個功能正在調整中，暫時不提供上傳、預覽與下載處理。</p>
+      </div>
+      <button class="primary-inline-button" type="button" @click="switchMode('text-extract')">
+        前往轉文字
+      </button>
+    </section>
     <WordTemplateWorkspace
       v-else-if="isWordTemplateMode"
       :staff-api-key="staffApiKey"
@@ -72,7 +84,7 @@
               v-model="mathBankFilters.search"
               class="text-input"
               type="text"
-              placeholder="題目、答案、詳解、思維"
+              placeholder="UUID、題目、答案、詳解、思維"
               @input="scheduleMathBankQuestionLoad"
             />
 
@@ -101,7 +113,7 @@
                 <select
                   v-model="mathBankFilters.unit_id"
                   class="select-input"
-                  @change="loadMathBankQuestions"
+                  @change="handleMathBankFilterChange"
                 >
                   <option :value="filterNoneValue">請選擇條件</option>
                   <option :value="filterAllValue">全部單元</option>
@@ -120,7 +132,7 @@
                 <select
                   v-model="mathBankFilters.difficulty"
                   class="select-input"
-                  @change="loadMathBankQuestions"
+                  @change="handleMathBankFilterChange"
                 >
                   <option value="">全部難度</option>
                   <option value="A">A 基礎型</option>
@@ -135,7 +147,7 @@
                 <select
                   v-model="mathBankFilters.status"
                   class="select-input"
-                  @change="loadMathBankQuestions"
+                  @change="handleMathBankFilterChange"
                 >
                   <option value="">全部狀態</option>
                   <option value="draft">草稿</option>
@@ -189,7 +201,7 @@
               class="secondary-button full"
               :disabled="!selectedMathBankQuestions.length"
               type="button"
-              @click="selectedMathBankQuestionIds = []"
+              @click="clearSelectedMathBankQuestions"
             >
               清空選題
             </button>
@@ -591,7 +603,6 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
-import HandwritingWorkspace from "./components/HandwritingWorkspace.vue";
 import MathText from "./components/MathText.vue";
 import SolutionReview from "./components/SolutionReview.vue";
 import WordTemplateWorkspace from "./components/WordTemplateWorkspace.vue";
@@ -619,17 +630,19 @@ const modes = [
     value: "handwriting",
     icon: "消",
     title: "筆跡去除",
-    description: "去除考卷上的筆跡並下載乾淨 PDF。",
-    actionTitle: "去除筆跡",
+    description: "筆跡去除功能調整中，暫停使用。",
+    actionTitle: "開發中",
     loadingTitle: "處理中",
+    badge: "開發中",
+    paused: true,
   },
   {
     value: "text-extract",
     icon: "TXT",
     title: "圖片/PDF 轉文字",
-    description: "上傳 PDF 或圖片後轉成文字。",
-    actionTitle: "開始轉文字",
-    loadingTitle: "解析中",
+    description: "上傳 PDF 或圖片後使用 OCR 轉成文字。",
+    actionTitle: "開始 OCR 轉文字",
+    loadingTitle: "OCR 解析中",
   },
   {
     value: "word-template",
@@ -666,7 +679,7 @@ const defaultJsonUnitId = "e886b5f1-571c-46b7-afb3-a9501024b8b9";
 
 const fileInput = ref(null);
 const file = ref(null);
-const mode = ref("handwriting");
+const mode = ref("text-extract");
 const text = ref("");
 const solutionDraft = ref("");
 const status = ref("idle");
@@ -681,6 +694,7 @@ const mathBankUnits = ref([]);
 const mathBankQuestions = ref([]);
 const mathBankQuestionById = ref({});
 const selectedMathBankQuestionIds = ref([]);
+const selectedMathBankQuestionById = ref({});
 const mathBankLoading = ref(false);
 const mathBankLoadingMore = ref(false);
 const mathBankHasMore = ref(false);
@@ -738,7 +752,7 @@ const hasMathBankConditions = computed(() => Boolean(
 ));
 const selectedMathBankQuestions = computed(() =>
   selectedMathBankQuestionIds.value
-    .map((id) => mathBankQuestionById.value[id])
+    .map((id) => selectedMathBankQuestionById.value[id] || mathBankQuestionById.value[id])
     .filter(Boolean),
 );
 const editorConfig = computed(() => {
@@ -793,6 +807,7 @@ function handleStaffApiKeyInput() {
     unit_id: filterNoneValue,
   };
   clearMathBankQuestions();
+  clearSelectedMathBankQuestions();
   if (isQuestionBankMode.value || isApiGuideMode.value) {
     status.value = hasStaffApiKey.value ? "idle" : "error";
     message.value = hasStaffApiKey.value ? "請重新讀取題庫分類。" : "請先輸入 Staff API Key。";
@@ -855,10 +870,16 @@ function scheduleMathBankQuestionLoad() {
 }
 
 function handleMathBankGradeChange() {
+  mathBankFilters.value.search = "";
   mathBankFilters.value.unit_id =
     mathBankFilters.value.grade_id === filterNoneValue
       ? filterNoneValue
       : filterAllValue;
+  loadMathBankQuestions();
+}
+
+function handleMathBankFilterChange() {
+  mathBankFilters.value.search = "";
   loadMathBankQuestions();
 }
 
@@ -882,9 +903,13 @@ function resetMathBankFilters() {
 function clearMathBankQuestions() {
   mathBankQuestions.value = [];
   mathBankQuestionById.value = {};
-  selectedMathBankQuestionIds.value = [];
   mathBankHasMore.value = false;
   mathBankNextCursor.value = null;
+}
+
+function clearSelectedMathBankQuestions() {
+  selectedMathBankQuestionIds.value = [];
+  selectedMathBankQuestionById.value = {};
 }
 
 function getMathBankSearchParams(cursor = "") {
@@ -925,9 +950,6 @@ function mergeMathBankQuestions(items, reset = false) {
 
   mathBankQuestionById.value = nextById;
   mathBankQuestions.value = nextIds.map((id) => nextById[id]).filter(Boolean);
-  selectedMathBankQuestionIds.value = selectedMathBankQuestionIds.value.filter(
-    (id) => Boolean(nextById[id]),
-  );
 }
 
 async function loadMathBankQuestions() {
@@ -1012,6 +1034,12 @@ async function ensureMathBankQuestionDetail(id) {
       ...result.data,
     },
   };
+  if (isMathBankQuestionSelected(id)) {
+    selectedMathBankQuestionById.value = {
+      ...selectedMathBankQuestionById.value,
+      [id]: mathBankQuestionById.value[id],
+    };
+  }
   mathBankQuestions.value = mathBankQuestions.value.map((question) =>
     question.id === id ? mathBankQuestionById.value[id] : question,
   );
@@ -1027,11 +1055,18 @@ async function toggleMathBankQuestion(id) {
     selectedMathBankQuestionIds.value = selectedMathBankQuestionIds.value.filter(
       (selectedId) => selectedId !== id,
     );
+    const nextSelectedById = { ...selectedMathBankQuestionById.value };
+    delete nextSelectedById[id];
+    selectedMathBankQuestionById.value = nextSelectedById;
     return;
   }
 
   const detail = await ensureMathBankQuestionDetail(id);
   if (!detail) return;
+  selectedMathBankQuestionById.value = {
+    ...selectedMathBankQuestionById.value,
+    [id]: detail,
+  };
   selectedMathBankQuestionIds.value = [...selectedMathBankQuestionIds.value, id];
 }
 
@@ -1370,8 +1405,8 @@ async function runAccurateExtraction() {
       file: file.value,
       requestExtract: (pageFile, pageMode) =>
         extractPdfText({ file: pageFile, mode: pageMode }),
-      onProgress: (value) => {
-        message.value = value;
+      onProgress: () => {
+        message.value = "正在使用 OCR 解析...";
       },
       onPartialText: (value) => {
         text.value = value;

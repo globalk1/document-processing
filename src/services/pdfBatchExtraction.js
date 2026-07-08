@@ -1,6 +1,6 @@
 const PDF_LIB_URL =
   "https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js";
-const MAX_PDF_PAGES = 20;
+const MAX_PDF_PAGES = 400;
 const MAX_ATTEMPTS_PER_PAGE = 3;
 
 let pdfLibPromise;
