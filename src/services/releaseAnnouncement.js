@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 const STORAGE_KEY = "huanyu-document-processing-seen-version";
 const SWEETALERT_SCRIPT_URL =
@@ -7,11 +7,11 @@ const SWEETALERT_STYLE_URL =
   "https://cdn.jsdelivr.net/npm/sweetalert2@11.26.24/dist/sweetalert2.min.css";
 
 const RELEASE_NOTES = [
-  "保留圖片 / PDF 轉文字流程，可下載 TXT 與 Markdown。",
-  "新增轉成題目格式 JSON，會先檢查文字是否能切成題目。",
-  "API 串接頁支援入題與下載題目，提供 macOS 與 Windows 指令。",
-  "年級與單元改為動態讀取，選擇後自動帶入 UUID，不需要手動填寫。",
-  "題庫挑題可篩選、勾選、下載選題 JSON，講義與考卷按鈕先保留入口。",
+  "新版入口調整為筆跡去除、圖片 / PDF 轉文字、Word 套版＋入資料庫、題庫挑題、API 串接。",
+  "筆跡去除新增手動框選消除與還原，可先預覽再下載處理後檔案。",
+  "圖片 / PDF 轉文字改用 OCR 解析，保留下載 TXT、Markdown 與轉題目 JSON。",
+  "Word 套版支援匯入題目 JSON 或 Word，編輯後可下載新版 JSON 並產生套版 Word。",
+  "入資料庫改為大量公開草稿入題，可逐題選擇是否匯入並補年級、單元、難度等屬性。",
 ];
 
 let sweetAlertPromise;
