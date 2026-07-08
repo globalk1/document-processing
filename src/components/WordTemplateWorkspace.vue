@@ -313,6 +313,25 @@
               </label>
             </div>
 
+            <label class="field-label">
+              入庫單元
+              <select
+                class="select-input"
+                :value="questionUnitId(question)"
+                :disabled="!filteredImportUnits.length"
+                @change="setQuestionMathBank(question, { unit_id: $event.target.value })"
+              >
+                <option value="">使用左側單元</option>
+                <option
+                  v-for="unit in filteredImportUnits"
+                  :key="getRecordId(unit)"
+                  :value="getRecordId(unit)"
+                >
+                  {{ unit.name }}
+                </option>
+              </select>
+            </label>
+
             <div class="fixed-meta-line">
               <span>入庫狀態：草稿</span>
               <span>可見性：公開</span>
@@ -828,6 +847,10 @@ function questionDifficulty(question) {
   return question.math_bank?.difficulty || "A";
 }
 
+function questionUnitId(question) {
+  return String(question.math_bank?.unit_id || "");
+}
+
 function formatQuestionType(type) {
   return QUESTION_TYPE_LABELS[type] || type || "-";
 }
@@ -993,7 +1016,7 @@ function buildMathBankPayload(document, overrides = {}) {
       const metadata = question.math_bank || {};
       return {
         grade_id: overrides.grade_id || metadata.grade_id || "",
-        unit_id: overrides.unit_id || metadata.unit_id || "",
+        unit_id: metadata.unit_id || overrides.unit_id || "",
         type: overrides.type || metadata.type || inferQuestionType(question),
         difficulty: overrides.difficulty || metadata.difficulty || "A",
         prompt_md: buildQuestionPrompt(question),

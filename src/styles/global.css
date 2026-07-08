@@ -970,8 +970,16 @@ h1 {
 
 .word-question-preview-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(160px, 0.6fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  width: 100%;
+}
+
+.word-question-preview-title {
+  grid-column: 1 / -1;
+  color: #202124;
+  font-size: 15px;
+  font-weight: 950;
 }
 
 .word-question-preview-panel section {
