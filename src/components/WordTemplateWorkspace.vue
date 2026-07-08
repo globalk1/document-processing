@@ -313,24 +313,43 @@
               </label>
             </div>
 
-            <label class="field-label">
-              入庫單元
-              <select
-                class="select-input"
-                :value="questionUnitId(question)"
-                :disabled="!filteredImportUnits.length"
-                @change="setQuestionMathBank(question, { unit_id: $event.target.value })"
-              >
-                <option value="">使用左側單元</option>
-                <option
-                  v-for="unit in filteredImportUnits"
-                  :key="getRecordId(unit)"
-                  :value="getRecordId(unit)"
+            <div class="filter-grid two">
+              <label>
+                <span class="field-label">入庫年級</span>
+                <select
+                  class="select-input"
+                  :value="questionGradeId(question)"
+                  @change="setQuestionMathBank(question, { grade_id: $event.target.value, unit_id: '' })"
                 >
-                  {{ unit.name }}
-                </option>
-              </select>
-            </label>
+                  <option value="">使用左側年級</option>
+                  <option
+                    v-for="grade in grades"
+                    :key="getRecordId(grade)"
+                    :value="getRecordId(grade)"
+                  >
+                    {{ grade.name }}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">入庫單元</span>
+                <select
+                  class="select-input"
+                  :value="questionUnitId(question)"
+                  :disabled="!filteredQuestionUnits(question).length"
+                  @change="setQuestionMathBank(question, { unit_id: $event.target.value })"
+                >
+                  <option value="">使用左側單元</option>
+                  <option
+                    v-for="unit in filteredQuestionUnits(question)"
+                    :key="getRecordId(unit)"
+                    :value="getRecordId(unit)"
+                  >
+                    {{ unit.name }}
+                  </option>
+                </select>
+              </label>
+            </div>
 
             <div class="fixed-meta-line">
               <span>入庫狀態：草稿</span>
@@ -847,8 +866,18 @@ function questionDifficulty(question) {
   return question.math_bank?.difficulty || "A";
 }
 
+function questionGradeId(question) {
+  return String(question.math_bank?.grade_id || "");
+}
+
 function questionUnitId(question) {
   return String(question.math_bank?.unit_id || "");
+}
+
+function filteredQuestionUnits(question) {
+  const gradeId = questionGradeId(question) || importSettings.gradeId;
+  if (!gradeId || gradeId === NEW_GRADE_VALUE) return [];
+  return units.value.filter((unit) => getUnitGradeId(unit) === gradeId);
 }
 
 function formatQuestionType(type) {
@@ -1015,7 +1044,7 @@ function buildMathBankPayload(document, overrides = {}) {
     questions: getDocumentQuestions(document).map((question) => {
       const metadata = question.math_bank || {};
       return {
-        grade_id: overrides.grade_id || metadata.grade_id || "",
+        grade_id: metadata.grade_id || overrides.grade_id || "",
         unit_id: metadata.unit_id || overrides.unit_id || "",
         type: overrides.type || metadata.type || inferQuestionType(question),
         difficulty: overrides.difficulty || metadata.difficulty || "A",
