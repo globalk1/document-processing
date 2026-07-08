@@ -92,19 +92,8 @@ export async function extractAccuratePdfInPages({
   onProgress,
   onPartialText,
 }) {
-  onProgress("正在檢查 PDF 文字層...");
-  const fastResult = await requestExtract(file, "fast");
-  if (fastResult.success && fastResult.text?.trim()) return fastResult;
-
-  if (
-    fastResult.status !== 422 &&
-    fastResult.code !== "no_text_extracted"
-  ) {
-    return fastResult;
-  }
-
   try {
-    onProgress("正在準備 PDF 分頁...");
+    onProgress("正在準備 PDF OCR 分頁...");
     const { PDFDocument } = await loadPdfLib();
     const sourcePdf = await PDFDocument.load(await file.arrayBuffer());
     const totalPages = sourcePdf.getPageCount();
@@ -133,8 +122,8 @@ export async function extractAccuratePdfInPages({
       for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_PAGE; attempt += 1) {
         onProgress(
           attempt === 1
-            ? `正在解析第 ${pageNumber} / ${totalPages} 頁...`
-            : `第 ${pageNumber} 頁重試中（${attempt}/${MAX_ATTEMPTS_PER_PAGE}）...`,
+            ? `正在 OCR 第 ${pageNumber} / ${totalPages} 頁...`
+            : `第 ${pageNumber} 頁 OCR 重試中（${attempt}/${MAX_ATTEMPTS_PER_PAGE}）...`,
         );
         pageResult = await requestExtract(pageFile, "accurate");
         if (pageResult.success || !shouldRetry(pageResult)) break;

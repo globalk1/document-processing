@@ -1413,32 +1413,20 @@ async function handleExtract() {
 
   status.value = "loading";
   diagnostics.value = null;
-  message.value = "正在使用免費解析...";
-
-  const freeResult = await extractPdfText({ file: file.value, mode: "fast" });
-  if (freeResult.success && freeResult.text?.trim()) {
-    text.value = freeResult.text || "";
-    status.value = "success";
-    message.value = "免費解析完成。";
-    return;
-  }
-
-  diagnostics.value = freeResult.diagnostics || null;
-  message.value = "免費解析沒有取得文字，正在改用 AI / OCR...";
+  message.value = "正在使用 OCR 解析...";
   const accurateResult = await runAccurateExtraction();
 
   if (accurateResult.success && accurateResult.text?.trim()) {
     text.value = accurateResult.text || "";
     status.value = "success";
-    message.value = "AI / OCR 解析完成。";
+    message.value = "OCR 解析完成。";
     return;
   }
 
   status.value = "error";
-  diagnostics.value = accurateResult.diagnostics || freeResult.diagnostics || null;
+  diagnostics.value = accurateResult.diagnostics || null;
   message.value =
     accurateResult.error ||
-    freeResult.error ||
     "沒有抽到文字，請確認檔案內容或稍後再試。";
 }
 
