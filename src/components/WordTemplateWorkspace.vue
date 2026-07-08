@@ -464,7 +464,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
 import {
   createStaffMathBankGrade,
-  createStaffMathBankQuestion,
+  createStaffMathBankQuestionsBulk,
   createStaffMathBankUnit,
   fetchWordTemplates,
   generateWordDocument,
@@ -656,9 +656,13 @@ async function importQuestions() {
   importMessage.value = "正在建立公開草稿題目...";
 
   try {
-    const gradeId = await ensureGrade();
-    const unitId = await ensureUnit(gradeId);
-    const payload = buildMathBankPayload(getSelectedImportDocument(document), {
+    const selectedDocument = getSelectedImportDocument(document);
+    const selectedQuestions = getDocumentQuestions(selectedDocument);
+    const needsDefaultGrade = selectedQuestions.some((question) => !questionGradeId(question));
+    const needsDefaultUnit = selectedQuestions.some((question) => !questionUnitId(question));
+    const gradeId = needsDefaultGrade || needsDefaultUnit ? await ensureGrade() : "";
+    const unitId = needsDefaultUnit ? await ensureUnit(gradeId) : "";
+    const payload = buildMathBankPayload(selectedDocument, {
       grade_id: gradeId,
       unit_id: unitId,
       type: importSettings.type === PER_QUESTION_VALUE ? undefined : importSettings.type,
@@ -668,13 +672,19 @@ async function importQuestions() {
           : importSettings.difficulty,
     });
 
-    for (const [index, question] of payload.questions.entries()) {
-      const result = await createStaffMathBankQuestion(question, {
-        apiKey: localStaffApiKey.value,
-      });
-      if (!result.success) {
-        throw new Error(`第 ${index + 1} 題入庫失敗：${result.error || "未知錯誤"}`);
-      }
+    const emptyQuestionIndex = payload.questions.findIndex(
+      (question) => !String(question.prompt_md || "").trim(),
+    );
+    if (emptyQuestionIndex >= 0) {
+      throw new Error(`第 ${emptyQuestionIndex + 1} 題沒有題目文字。`);
+    }
+
+    const result = await createStaffMathBankQuestionsBulk(
+      { questions: payload.questions },
+      { apiKey: localStaffApiKey.value },
+    );
+    if (!result.success) {
+      throw new Error(result.error || "批次入庫失敗。");
     }
 
     importStatus.value = "success";
@@ -692,27 +702,35 @@ function validateImport(document) {
     importMessage.value = "請先輸入 Staff API Key。";
     return false;
   }
-  if (!getDocumentQuestions(getSelectedImportDocument(document)).length) {
+  const selectedQuestions = getDocumentQuestions(getSelectedImportDocument(document));
+  if (!selectedQuestions.length) {
     importStatus.value = "error";
     importMessage.value = "至少需要勾選一題才能入資料庫。";
     return false;
   }
-  if (!importSettings.gradeId) {
+  const needsDefaultGrade = selectedQuestions.some((question) => !questionGradeId(question));
+  const needsDefaultUnit = selectedQuestions.some((question) => !questionUnitId(question));
+  if ((needsDefaultGrade || needsDefaultUnit) && !importSettings.gradeId) {
     importStatus.value = "error";
-    importMessage.value = "請選擇年級，或手打新增年級。";
+    importMessage.value = "有題目尚未指定年級，請在左側選擇預設年級或逐題指定。";
     return false;
   }
-  if (importSettings.gradeId === NEW_GRADE_VALUE && !importSettings.newGradeName.trim()) {
+  if (
+    (needsDefaultGrade || needsDefaultUnit) &&
+    importSettings.gradeId === NEW_GRADE_VALUE &&
+    !importSettings.newGradeName.trim()
+  ) {
     importStatus.value = "error";
     importMessage.value = "請輸入新年級名稱。";
     return false;
   }
-  if (!importSettings.unitId) {
+  if (needsDefaultUnit && !importSettings.unitId) {
     importStatus.value = "error";
-    importMessage.value = "請選擇單元，或手打新增單元。";
+    importMessage.value = "有題目尚未指定單元，請在左側選擇預設單元或逐題指定。";
     return false;
   }
   if (
+    needsDefaultUnit &&
     (importSettings.unitId === NEW_UNIT_VALUE || importSettings.gradeId === NEW_GRADE_VALUE) &&
     !importSettings.newUnitName.trim()
   ) {

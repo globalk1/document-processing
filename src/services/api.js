@@ -134,6 +134,10 @@ export async function createStaffMathBankQuestion(data, options = {}) {
   return postMathBankJson("/staff/questions/", data, options);
 }
 
+export async function createStaffMathBankQuestionsBulk(data, options = {}) {
+  return postMathBankJson("/staff/questions/bulk/", data, options);
+}
+
 export async function buildMathBankJson({
   text,
   gradeId,

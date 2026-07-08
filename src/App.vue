@@ -338,12 +338,12 @@
             <section class="api-command-section">
               <div class="api-section-heading">
                 <h3>入題 API 方式</h3>
-                <span>POST /staff/questions/</span>
+                <span>POST /staff/questions/bulk/</span>
               </div>
               <ol class="api-step-list">
                 <li>把 `math-bank-questions.json` 放在要執行指令的資料夾。</li>
-                <li>指令會逐題 POST 到入題 API。</li>
-                <li>進度列會顯示目前匯入第幾題；重複題會標示 `DUPLICATE`。</li>
+                <li>指令會整份 POST 到批次入題 API。</li>
+                <li>新增成功後，後端會寄出一封 Staff API Gmail 摘要通知。</li>
               </ol>
 
               <div class="api-code-grid">
@@ -687,7 +687,7 @@ const mathBankHasMore = ref(false);
 const mathBankNextCursor = ref(null);
 const jsonBuilding = ref(false);
 const staffApiKey = ref(defaultStaffApiKey);
-const staffApiUrl = ref("https://sunnytseng.com/api/math-bank/staff/questions/");
+const staffApiUrl = ref("https://sunnytseng.com/api/math-bank/staff/questions/bulk/");
 const apiGuideSelection = ref({
   grade_id: filterNoneValue,
   unit_id: filterNoneValue,
@@ -1191,11 +1191,14 @@ async function downloadMathBankJson() {
 }
 
 const apiKeyForCommand = computed(() => staffApiKey.value.trim() || "請輸入_staff_api_key");
-const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "https://sunnytseng.com/api/math-bank/staff/questions/");
+const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "https://sunnytseng.com/api/math-bank/staff/questions/bulk/");
 const apiGuideGradeIdForCommand = computed(() => selectedApiGuideGradeId.value || "請先選擇年級_UUID");
 const apiGuideUnitIdForCommand = computed(() => selectedApiGuideUnitId.value || "請先選擇單元_UUID");
 const fetchApiUrlForCommand = computed(() => {
   const importUrl = apiUrlForCommand.value;
+  if (importUrl.includes("/staff/questions/bulk/")) {
+    return importUrl.replace("/staff/questions/bulk/", "/questions/search/");
+  }
   if (importUrl.includes("/staff/questions/")) {
     return importUrl.replace("/staff/questions/", "/questions/search/");
   }
@@ -1228,48 +1231,33 @@ command -v jq >/dev/null || { echo "缺少 jq，請先安裝 jq"; exit 1; }
 [ -f "$FILE" ] || { echo "找不到檔案：$FILE"; exit 1; }
 
 TOTAL=$(jq ".questions | length" "$FILE")
-OK=0
-SKIP=0
-FAIL=0
 START=$(date +%s)
 echo "開始匯入：$TOTAL 題"
 
-i=0
-while read -r body; do
-  i=$((i + 1))
-  body=$(printf '%s' "$body" | jq -c --arg grade "$GRADE_ID" --arg unit "$UNIT_ID" '. + {grade_id: $grade, unit_id: $unit}')
-  if [ "$FORCE_DUPLICATES" = "1" ]; then
-    body=$(printf '%s' "$body" | jq -c '. + {duplicate_policy: "allow"}')
-  fi
-  title=$(printf '%s' "$body" | jq -r '.prompt_md // "" | gsub("\\n"; " ") | .[0:36]')
-  printf "[%s/%s] %s ... " "$i" "$TOTAL" "$title"
+if [ "$FORCE_DUPLICATES" = "1" ]; then
+  body=$(jq -c --arg grade "$GRADE_ID" --arg unit "$UNIT_ID" '{questions: [.questions[] | . + {grade_id: $grade, unit_id: $unit, duplicate_policy: "allow"}]}' "$FILE")
+else
+  body=$(jq -c --arg grade "$GRADE_ID" --arg unit "$UNIT_ID" '{questions: [.questions[] | . + {grade_id: $grade, unit_id: $unit}]}' "$FILE")
+fi
 
-  response=$(curl -sS -w '\n%{http_code}' -X POST "$API_URL" \
-    -H "Content-Type: application/json" \
-    -H "X-API-KEY: $API_KEY" \
-    -d "$body")
-  http_code=$(printf "%s" "$response" | tail -n 1)
-  response_body=$(printf "%s" "$response" | sed '$d')
+response=$(curl -sS -w '\n%{http_code}' -X POST "$API_URL" \
+  -H "Content-Type: application/json" \
+  -H "X-API-KEY: $API_KEY" \
+  -d "$body")
+http_code=$(printf "%s" "$response" | tail -n 1)
+response_body=$(printf "%s" "$response" | sed '$d')
 
-  if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-    id=$(printf "%s" "$response_body" | jq -r ".id // empty")
-    echo "OK $id"
-    OK=$((OK + 1))
-  else
-    duplicate_id=$(printf '%s' "$response_body" | jq -r '.duplicate_question_id[0] // .duplicate_question_id // empty')
-    if [ -n "$duplicate_id" ]; then
-      echo "DUPLICATE $duplicate_id"
-      SKIP=$((SKIP + 1))
-    else
-      echo "FAIL HTTP $http_code"
-      printf "%s\n" "$response_body"
-      FAIL=$((FAIL + 1))
-    fi
-  fi
-done < <(jq -c '.questions[]' "$FILE")
+if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+  count=$(printf "%s" "$response_body" | jq -r ".count // 0")
+  echo "OK：已新增 $count 題，Gmail 摘要會由後端寄出"
+else
+  echo "FAIL HTTP $http_code"
+  printf "%s\n" "$response_body"
+  exit 1
+fi
 
 END=$(date +%s)
-echo "完成：成功 $OK / 重複略過 $SKIP / 失敗 $FAIL / 耗時 $((END - START)) 秒"`);
+echo "完成：耗時 $((END - START)) 秒"`);
 
 const windowsTimelineImportCommand = computed(() => String.raw`$ApiKey = "${apiKeyForCommand.value}"
 $File = ".\math-bank-questions.json"
@@ -1283,42 +1271,28 @@ if (!(Test-Path $File)) { throw "找不到檔案：$File" }
 $Data = Get-Content $File -Raw | ConvertFrom-Json
 $Questions = @($Data.questions)
 $Total = $Questions.Count
-$Ok = 0
-$Skip = 0
-$Fail = 0
-$Index = 0
 $Start = Get-Date
 Write-Host "開始匯入：$Total 題"
 
 foreach ($Question in $Questions) {
-  $Index++
   $Question | Add-Member -NotePropertyName "grade_id" -NotePropertyValue $GradeId -Force
   $Question | Add-Member -NotePropertyName "unit_id" -NotePropertyValue $UnitId -Force
   if ($ForceDuplicates) { $Question | Add-Member -NotePropertyName "duplicate_policy" -NotePropertyValue "allow" -Force }
-  $Title = (($Question.prompt_md -replace "\s+", " ").Trim())
-  if ($Title.Length -gt 36) { $Title = $Title.Substring(0, 36) }
-  Write-Host "[$Index/$Total] $Title ... " -NoNewline
-  $Body = $Question | ConvertTo-Json -Depth 20 -Compress
-  try {
-    $Result = Invoke-RestMethod -Method Post -Uri $ApiUrl -Headers @{ "X-API-KEY" = $ApiKey; "Content-Type" = "application/json" } -Body $Body
-    Write-Host "OK $($Result.id)"
-    $Ok++
-  } catch {
-    $ErrorJson = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction SilentlyContinue
-    $DuplicateId = @($ErrorJson.duplicate_question_id)[0]
-    if ($DuplicateId) {
-      Write-Host "DUPLICATE $DuplicateId"
-      $Skip++
-    } else {
-      Write-Host "FAIL"
-      Write-Host $_.Exception.Message
-      $Fail++
-    }
-  }
+}
+
+$Body = @{ questions = $Questions } | ConvertTo-Json -Depth 30 -Compress
+try {
+  $Result = Invoke-RestMethod -Method Post -Uri $ApiUrl -Headers @{ "X-API-KEY" = $ApiKey; "Content-Type" = "application/json" } -Body $Body
+  Write-Host "OK：已新增 $($Result.count) 題，Gmail 摘要會由後端寄出"
+} catch {
+  Write-Host "FAIL"
+  Write-Host $_.Exception.Message
+  if ($_.ErrorDetails.Message) { Write-Host $_.ErrorDetails.Message }
+  throw
 }
 
 $Elapsed = [int]((Get-Date) - $Start).TotalSeconds
-Write-Host "完成：成功 $Ok / 重複略過 $Skip / 失敗 $Fail / 耗時 $Elapsed 秒"`);
+Write-Host "完成：耗時 $Elapsed 秒"`);
 
 const pythonFetchQuestionsCommand = computed(() => String.raw`import json
 import requests
