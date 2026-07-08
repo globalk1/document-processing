@@ -597,9 +597,8 @@ import {
   searchStaffMathBankQuestions,
 } from "./services/api";
 import {
-  extractAccuratePdfInPages,
+  extractPdfAutomatically,
   isPdfFile,
-  validatePdfPageLimit,
 } from "./services/pdfBatchExtraction";
 import {
   APP_VERSION,
@@ -1351,22 +1350,12 @@ async function validateSelectedFile() {
     return false;
   }
 
-  if (isPdfFile(file.value)) {
-    message.value = "正在檢查 PDF 頁數...";
-    const pageValidation = await validatePdfPageLimit(file.value);
-    if (!pageValidation.success) {
-      status.value = "error";
-      message.value = pageValidation.error;
-      return false;
-    }
-  }
-
   return true;
 }
 
-async function runAccurateExtraction() {
+async function runTextExtraction() {
   if (isPdfFile(file.value)) {
-    return extractAccuratePdfInPages({
+    return extractPdfAutomatically({
       file: file.value,
       requestExtract: (pageFile, pageMode) =>
         extractPdfText({ file: pageFile, mode: pageMode }),
@@ -1379,7 +1368,7 @@ async function runAccurateExtraction() {
     });
   }
 
-  return extractPdfText({ file: file.value, mode: "accurate" });
+  return extractPdfText({ file: file.value, mode: "auto" });
 }
 
 async function handleExtract() {
@@ -1387,33 +1376,20 @@ async function handleExtract() {
 
   status.value = "loading";
   diagnostics.value = null;
-  message.value = "正在使用免費解析...";
+  message.value = "";
+  const result = await runTextExtraction();
 
-  const freeResult = await extractPdfText({ file: file.value, mode: "fast" });
-  if (freeResult.success && freeResult.text?.trim()) {
-    text.value = freeResult.text || "";
+  if (result.success && result.text?.trim()) {
+    text.value = result.text || "";
     status.value = "success";
-    message.value = "免費解析完成。";
-    return;
-  }
-
-  diagnostics.value = freeResult.diagnostics || null;
-  message.value = "免費解析沒有取得文字，正在改用 AI / OCR...";
-  const accurateResult = await runAccurateExtraction();
-
-  if (accurateResult.success && accurateResult.text?.trim()) {
-    text.value = accurateResult.text || "";
-    status.value = "success";
-    message.value = "AI / OCR 解析完成。";
+    message.value = "解析完成。";
     return;
   }
 
   status.value = "error";
-  diagnostics.value = accurateResult.diagnostics || freeResult.diagnostics || null;
+  diagnostics.value = result.diagnostics || null;
   message.value =
-    accurateResult.error ||
-    freeResult.error ||
-    "沒有抽到文字，請確認檔案內容或稍後再試。";
+    result.error || "沒有抽到文字，請確認檔案內容或稍後再試。";
 }
 
 function handleSelectedMode() {
