@@ -102,6 +102,55 @@ async function postMathBankJson(path, body, options = {}) {
   return { success: true, data: result };
 }
 
+async function sendMathBankJson(path, body, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
+
+  const response = await fetch(`${API_URL}/math-bank${path}`, {
+    method: options.method || "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  const result = await parseJson(response);
+
+  if (!response.ok) {
+    return {
+      success: false,
+      error: getAuthError(response, result, "題庫寫入失敗"),
+      status: response.status,
+      data: result,
+    };
+  }
+
+  return { success: true, data: result };
+}
+
+async function deleteMathBankJson(path, options = {}) {
+  const headers = {};
+  if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
+
+  const response = await fetch(`${API_URL}/math-bank${path}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (response.status === 204) return { success: true, data: null };
+  const result = await parseJson(response);
+
+  if (!response.ok) {
+    return {
+      success: false,
+      error: getAuthError(response, result, "題庫刪除失敗"),
+      status: response.status,
+      data: result,
+    };
+  }
+
+  return { success: true, data: result };
+}
+
 export async function listMathBankGrades(params = {}, options = {}) {
   return fetchMathBankJson("/grades/", params, options);
 }
@@ -136,6 +185,17 @@ export async function createStaffMathBankQuestion(data, options = {}) {
 
 export async function createStaffMathBankQuestionsBulk(data, options = {}) {
   return postMathBankJson("/staff/questions/bulk/", data, options);
+}
+
+export async function updateStaffMathBankQuestion(id, data, options = {}) {
+  return sendMathBankJson(`/staff/questions/${encodeURIComponent(id)}/`, data, {
+    ...options,
+    method: "PATCH",
+  });
+}
+
+export async function deleteStaffMathBankQuestion(id, options = {}) {
+  return deleteMathBankJson(`/staff/questions/${encodeURIComponent(id)}/`, options);
 }
 
 export async function buildMathBankJson({

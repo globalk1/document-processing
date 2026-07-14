@@ -1,18 +1,7 @@
 <template>
   <section class="feature-workspace word-template-workspace">
     <aside class="control-panel">
-      <h2 class="section-title">Word 套版＋公開草稿入題</h2>
-
-      <label class="api-key-field">
-        <span>Staff API Key</span>
-        <input
-          v-model="localStaffApiKey"
-          autocomplete="off"
-          spellcheck="false"
-          type="password"
-          placeholder="入資料庫時使用"
-        />
-      </label>
+      <h2 class="section-title">Word 套版</h2>
 
       <label class="field-label">
         Word 模板
@@ -100,83 +89,6 @@
         </button>
       </section>
 
-      <section v-if="wordDocument" class="action-box">
-        <h3>公開草稿大量入題</h3>
-        <div class="fixed-meta-line">
-          <span>狀態：草稿</span>
-          <span>可見性：公開</span>
-        </div>
-
-        <label class="field-label">
-          年級
-          <select v-model="importSettings.gradeId" class="select-input" @change="handleGradeChange">
-            <option value="">選擇年級</option>
-            <option v-for="grade in grades" :key="getRecordId(grade)" :value="getRecordId(grade)">
-              {{ grade.name }}
-            </option>
-            <option :value="NEW_GRADE_VALUE">+ 手打新增年級</option>
-          </select>
-        </label>
-        <input
-          v-if="importSettings.gradeId === NEW_GRADE_VALUE"
-          v-model="importSettings.newGradeName"
-          class="text-input"
-          type="text"
-          placeholder="輸入新年級名稱"
-        />
-
-        <label class="field-label">
-          單元
-          <select v-model="importSettings.unitId" class="select-input" :disabled="!importSettings.gradeId">
-            <option value="">選擇單元</option>
-            <option v-for="unit in filteredImportUnits" :key="getRecordId(unit)" :value="getRecordId(unit)">
-              {{ unit.name }}
-            </option>
-            <option :value="NEW_UNIT_VALUE">+ 手打新增單元</option>
-          </select>
-        </label>
-        <input
-          v-if="importSettings.unitId === NEW_UNIT_VALUE || importSettings.gradeId === NEW_GRADE_VALUE"
-          v-model="importSettings.newUnitName"
-          class="text-input"
-          type="text"
-          placeholder="輸入新單元名稱"
-        />
-
-        <div class="filter-grid two">
-          <label>
-            <span class="field-label">題型</span>
-            <select v-model="importSettings.type" class="select-input">
-              <option value="__per_question__">依每題設定</option>
-              <option value="calculation">計算題</option>
-              <option value="choice">選擇題</option>
-              <option value="fill">填充題</option>
-              <option value="proof">證明題</option>
-            </select>
-          </label>
-          <label>
-            <span class="field-label">難度</span>
-            <select v-model="importSettings.difficulty" class="select-input">
-              <option value="__per_question__">依每題設定</option>
-              <option value="A">A 基礎型</option>
-              <option value="B">B 進階型</option>
-              <option value="C">C 挑戰型</option>
-              <option value="S">S 究極型</option>
-            </select>
-          </label>
-        </div>
-
-        <button
-          class="primary-button full"
-          :disabled="importStatus === 'loading'"
-          type="button"
-          @click="importQuestions"
-        >
-          {{ importStatus === "loading" ? "入庫中" : "題目入資料庫" }}
-        </button>
-        <p v-if="importMessage" class="message" :class="importStatus">{{ importMessage }}</p>
-      </section>
-
       <p v-if="wordMessage" class="message" :class="wordStatus">{{ wordMessage }}</p>
     </aside>
 
@@ -193,7 +105,7 @@
         <header class="word-workflow-header">
           <div>
             <span>01</span>
-            <h3>公開草稿題目清單</h3>
+            <h3>題目清單</h3>
           </div>
           <strong>{{ wordStats.questions }} 題</strong>
         </header>
@@ -355,7 +267,7 @@
 
             <div class="fixed-meta-line">
               <span>入庫狀態：草稿</span>
-              <span>可見性：公開</span>
+              <span>員工題庫</span>
             </div>
 
             <label class="field-label">
@@ -653,7 +565,7 @@ async function importQuestions() {
   if (!document || !validateImport(document)) return;
 
   importStatus.value = "loading";
-  importMessage.value = "正在建立公開草稿題目...";
+  importMessage.value = "正在建立草稿題目...";
 
   try {
     const selectedDocument = getSelectedImportDocument(document);
@@ -688,7 +600,7 @@ async function importQuestions() {
     }
 
     importStatus.value = "success";
-    importMessage.value = `已新增 ${payload.questions.length} 題公開草稿。`;
+    importMessage.value = `已新增 ${payload.questions.length} 題草稿。`;
     await loadTaxonomy({ silent: true });
   } catch (error) {
     importStatus.value = "error";
@@ -705,7 +617,7 @@ function validateImport(document) {
   const selectedQuestions = getDocumentQuestions(getSelectedImportDocument(document));
   if (!selectedQuestions.length) {
     importStatus.value = "error";
-    importMessage.value = "至少需要勾選一題才能入資料庫。";
+    importMessage.value = "至少需要勾選一題。";
     return false;
   }
   const needsDefaultGrade = selectedQuestions.some((question) => !questionGradeId(question));

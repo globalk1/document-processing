@@ -28,11 +28,11 @@
       </button>
     </nav>
 
-    <section v-if="isHandwritingMode" class="maintenance-panel" aria-live="polite">
+    <section v-if="selectedMode.paused" class="maintenance-panel" aria-live="polite">
       <div>
         <span class="maintenance-kicker">開發中</span>
-        <h2>筆跡去除暫停使用</h2>
-        <p>這個功能正在調整中，暫時不提供上傳、預覽與下載處理。</p>
+        <h2>{{ selectedMode.title }}暫停使用</h2>
+        <p>{{ selectedMode.description }}</p>
       </div>
       <button class="primary-inline-button" type="button" @click="switchMode('text-extract')">
         前往轉文字
@@ -41,6 +41,11 @@
     <WordTemplateWorkspace
       v-else-if="isWordTemplateMode"
       :staff-api-key="staffApiKey"
+    />
+    <MathBankQuestionEditor
+      v-else-if="isQuestionEditorMode"
+      v-model:staff-api-key="staffApiKey"
+      @copy="copyText"
     />
     <section
       v-else
@@ -244,6 +249,14 @@
           <div class="download-button-grid">
             <button
               class="secondary-button full"
+              :disabled="wordBuilding || !text.trim()"
+              type="button"
+              @click="downloadCleanWord"
+            >
+              {{ wordBuilding ? "產生中" : "下載乾淨 Word" }}
+            </button>
+            <button
+              class="secondary-button full"
               :disabled="!text.trim()"
               type="button"
               @click="downloadTextFile('txt')"
@@ -285,8 +298,8 @@
           <div class="api-guide-panel">
             <div class="api-guide-header">
               <div>
-                <h2 class="section-title">API 串接入題/下載題目</h2>
-                <p>入題使用 POST；下載題目使用 fetch / GET，可依環境複製指令。</p>
+                <h2 class="section-title">其他方式</h2>
+                <p>提供 POST 與 fetch / GET 指令，可依環境複製使用。</p>
               </div>
               <span class="api-guide-badge">遇到重複題預設略過</span>
             </div>
@@ -385,13 +398,43 @@
             <section class="api-command-section">
               <div class="api-section-heading">
                 <h3>Fetch 方式 / 下載題目</h3>
-                <span>GET /questions/search/</span>
+                <button
+                  class="ghost-button compact"
+                  :disabled="mathBankLoading"
+                  type="button"
+                  @click="loadMathBankTaxonomy({ force: true })"
+                >
+                  {{ mathBankLoading ? "查詢中" : "重新查詢 ID" }}
+                </button>
               </div>
               <ol class="api-step-list">
-                <li>用 Staff API Key 讀取題目清單。</li>
-                <li>可調整 `GRADE_ID`、`UNIT_ID`、`DIFFICULTY`、`STATUS`。</li>
+                <li>用 Staff API Key 查詢年級與單元 ID，再讀取題目清單。</li>
+                <li>可調整 Python 內的 `GRADE_ID`、`UNIT_ID`、`GRADE_NAME`、`UNIT_NAME`。</li>
                 <li>結果會存成 `math-bank-fetch-results.json`。</li>
               </ol>
+
+              <div class="api-code-grid">
+                <section class="api-code-card">
+                  <div class="code-header">
+                    <div>
+                      <strong>年級 ID</strong>
+                      <span>{{ mathBankGrades.length }} 筆</span>
+                    </div>
+                    <button class="ghost-button compact" type="button" @click="copyText(apiGuideGradeIdList)">複製</button>
+                  </div>
+                  <pre>{{ apiGuideGradeIdList }}</pre>
+                </section>
+                <section class="api-code-card">
+                  <div class="code-header">
+                    <div>
+                      <strong>單元 ID</strong>
+                      <span>{{ mathBankUnits.length }} 筆</span>
+                    </div>
+                    <button class="ghost-button compact" type="button" @click="copyText(apiGuideUnitIdList)">複製</button>
+                  </div>
+                  <pre>{{ apiGuideUnitIdList }}</pre>
+                </section>
+              </div>
 
               <div class="api-code-grid single">
                 <section class="api-code-card">
@@ -400,7 +443,7 @@
                       <strong>Python requests Fetch</strong>
                       <span>下載題目 JSON</span>
                     </div>
-                    <button class="ghost-button compact" type="button" @click="copyApiCommand(pythonFetchQuestionsCommand)">複製</button>
+                    <button class="ghost-button compact" type="button" @click="copyText(pythonFetchQuestionsCommand)">複製</button>
                   </div>
                   <pre>{{ pythonFetchQuestionsCommand }}</pre>
                 </section>
@@ -466,13 +509,13 @@
               </div>
 
               <div class="question-card-details">
-                <section v-if="question.answer_md">
+                <section class="question-answer-detail">
                   <strong>答案</strong>
-                  <p><MathText :content="question.answer_md" fallback="" /></p>
+                  <p><MathText :content="question.answer_md" fallback="尚未輸入答案" /></p>
                 </section>
-                <section v-if="question.solution_md">
+                <section class="question-solution-detail">
                   <strong>詳解</strong>
-                  <p><MathText :content="question.solution_md" fallback="" /></p>
+                  <p><MathText :content="question.solution_md" fallback="尚未輸入詳解" /></p>
                 </section>
                 <section v-if="formatQuestionThinking(question.thinking)">
                   <strong>思維</strong>
@@ -487,25 +530,12 @@
 
               <div class="question-card-footer">
                 <span>{{ question.assets?.length || 0 }} 圖</span>
-                <button
-                  class="ghost-button compact"
-                  type="button"
-                  @click="toggleMathBankQuestion(question.id)"
-                >
-                  {{ isMathBankQuestionSelected(question.id) ? "取消選取" : "加入選題" }}
-                </button>
               </div>
             </article>
-            <div class="load-more-row">
-              <button
-                v-if="mathBankHasMore"
-                class="secondary-button"
-                :disabled="mathBankLoadingMore"
-                type="button"
-                @click="loadMoreMathBankQuestions"
-              >
-                {{ mathBankLoadingMore ? "載入中" : "載入更多" }}
-              </button>
+            <div ref="questionBankSentinelRef" class="load-more-row">
+              <span v-if="mathBankHasMore">
+                {{ mathBankLoadingMore ? "載入中" : "往下捲動載入更多" }}
+              </span>
               <span v-else>已載入全部符合條件的題目</span>
             </div>
           </div>
@@ -601,14 +631,16 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import ExpandedEditorModal from "./components/ExpandedEditorModal.vue";
+import MathBankQuestionEditor from "./components/MathBankQuestionEditor.vue";
 import MathText from "./components/MathText.vue";
 import SolutionReview from "./components/SolutionReview.vue";
 import WordTemplateWorkspace from "./components/WordTemplateWorkspace.vue";
 import {
   buildMathBankJson,
   extractPdfText,
+  generateWordDocument,
   getStaffMathBankQuestion,
   listMathBankGrades,
   listMathBankUnits,
@@ -647,24 +679,34 @@ const modes = [
   {
     value: "word-template",
     icon: "W",
-    title: "Word 套版＋入資料庫",
-    description: "JSON / Word 題目套版，並批量新增公開草稿。",
-    actionTitle: "解析題目",
+    title: "Word 套版",
+    description: "這個功能正在調整中，暫時不提供解析、預覽與下載處理。",
+    actionTitle: "開發中",
     loadingTitle: "解析中",
+    badge: "開發中",
+    paused: true,
+  },
+  {
+    value: "question-editor",
+    icon: "編",
+    title: "編輯題目",
+    description: "搜尋、建立並校正員工題庫題目。",
+    actionTitle: "編輯題目",
+    loadingTitle: "讀取中",
   },
   {
     value: "question-bank",
     icon: "題",
-    title: "題庫挑題",
-    description: "搜尋、篩選並複製題目。",
+    title: "題庫挑題與下載",
+    description: "搜尋、篩選並下載題目。",
     actionTitle: "讀取題庫",
     loadingTitle: "題庫讀取中",
   },
   {
     value: "api-guide",
     icon: "API",
-    title: "API 串接入題/下載題目",
-    description: "複製入題與 fetch 下載題目的指令。",
+    title: "其他方式",
+    description: "複製其他題目處理方式的指令。",
     actionTitle: "查看指令",
     loadingTitle: "讀取中",
   },
@@ -699,7 +741,9 @@ const mathBankLoading = ref(false);
 const mathBankLoadingMore = ref(false);
 const mathBankHasMore = ref(false);
 const mathBankNextCursor = ref(null);
+const questionBankSentinelRef = ref(null);
 const jsonBuilding = ref(false);
+const wordBuilding = ref(false);
 const staffApiKey = ref(defaultStaffApiKey);
 const staffApiUrl = ref("https://sunnytseng.com/api/math-bank/staff/questions/bulk/");
 const apiGuideSelection = ref({
@@ -714,8 +758,10 @@ const mathBankFilters = ref({
   status: "",
 });
 let mathBankSearchTimer = null;
+let questionBankObserver = null;
 
 const isQuestionBankMode = computed(() => mode.value === "question-bank");
+const isQuestionEditorMode = computed(() => mode.value === "question-editor");
 const isApiGuideMode = computed(() => mode.value === "api-guide");
 const isHandwritingMode = computed(() => mode.value === "handwriting");
 const isWordTemplateMode = computed(() => mode.value === "word-template");
@@ -783,6 +829,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (mathBankSearchTimer) window.clearTimeout(mathBankSearchTimer);
+  stopQuestionBankObserver();
 });
 
 function switchMode(value) {
@@ -829,9 +876,9 @@ async function loadMathBankWorkspace() {
   }
 }
 
-async function loadMathBankTaxonomy() {
+async function loadMathBankTaxonomy({ force = false } = {}) {
   if (!requireStaffApiKey()) return false;
-  if (mathBankGrades.value.length && mathBankUnits.value.length) return true;
+  if (!force && mathBankGrades.value.length && mathBankUnits.value.length) return true;
 
   mathBankLoading.value = true;
   message.value = "正在讀取題庫分類...";
@@ -901,6 +948,7 @@ function resetMathBankFilters() {
 }
 
 function clearMathBankQuestions() {
+  stopQuestionBankObserver();
   mathBankQuestions.value = [];
   mathBankQuestionById.value = {};
   mathBankHasMore.value = false;
@@ -927,6 +975,7 @@ function getMathBankSearchParams(cursor = "") {
         : mathBankFilters.value.unit_id,
     difficulty: mathBankFilters.value.difficulty,
     status: mathBankFilters.value.status,
+    include_details: "true",
     limit: mathBankPageSize,
     cursor,
   };
@@ -973,6 +1022,7 @@ async function loadMathBankQuestions() {
     mergeMathBankQuestions(result.data.results || [], true);
     mathBankHasMore.value = Boolean(result.data.has_more);
     mathBankNextCursor.value = result.data.next_cursor || null;
+    setupQuestionBankObserver();
     status.value = "success";
     message.value = `已讀取 ${mathBankQuestions.value.length}${mathBankHasMore.value ? "+" : ""} 題。`;
   } else {
@@ -999,6 +1049,7 @@ async function loadMoreMathBankQuestions() {
     mergeMathBankQuestions(result.data.results || [], false);
     mathBankHasMore.value = Boolean(result.data.has_more);
     mathBankNextCursor.value = result.data.next_cursor || null;
+    setupQuestionBankObserver();
     status.value = "success";
     message.value = `已讀取 ${mathBankQuestions.value.length}${mathBankHasMore.value ? "+" : ""} 題。`;
   } else {
@@ -1007,6 +1058,37 @@ async function loadMoreMathBankQuestions() {
   }
 
   mathBankLoadingMore.value = false;
+}
+
+async function setupQuestionBankObserver() {
+  stopQuestionBankObserver();
+  if (!mathBankHasMore.value) return;
+  await nextTick();
+  const sentinel = questionBankSentinelRef.value;
+  if (!sentinel) return;
+
+  questionBankObserver = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0];
+      if (
+        entry?.isIntersecting &&
+        isQuestionBankMode.value &&
+        mathBankHasMore.value &&
+        !mathBankLoading.value &&
+        !mathBankLoadingMore.value
+      ) {
+        loadMoreMathBankQuestions();
+      }
+    },
+    { rootMargin: "360px 0px" },
+  );
+  questionBankObserver.observe(sentinel);
+}
+
+function stopQuestionBankObserver() {
+  if (!questionBankObserver) return;
+  questionBankObserver.disconnect();
+  questionBankObserver = null;
 }
 
 async function ensureMathBankQuestionDetail(id) {
@@ -1173,6 +1255,17 @@ function downloadJson(payload, filename) {
   );
 }
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function downloadTextFile(format) {
   const content = text.value.trim();
   if (!content) {
@@ -1225,6 +1318,60 @@ async function downloadMathBankJson() {
   jsonBuilding.value = false;
 }
 
+function buildRawWordDocument(rawText) {
+  return {
+    title: "",
+    metadata: {
+      raw_text_export: true,
+      source_format: "recognized_text",
+      warnings: [],
+    },
+    sections: [],
+    unassigned_content: [
+      {
+        type: "paragraph",
+        text: rawText,
+        style: "",
+        source: { container: "document_processing_textarea" },
+        asset_ids: [],
+      },
+    ],
+    assets: [],
+  };
+}
+
+async function downloadCleanWord() {
+  if (!text.value.trim()) {
+    status.value = "error";
+    message.value = "請先有解析文字。";
+    return;
+  }
+
+  const baseName = file.value?.name
+    ? file.value.name.replace(/\.[^.]+$/, "")
+    : "recognized-text";
+  wordBuilding.value = true;
+  status.value = "loading";
+  message.value = "正在產生乾淨 Word，會保留文字並轉換公式...";
+
+  const result = await generateWordDocument({
+    document: buildRawWordDocument(text.value),
+    filename: `${baseName}.docx`,
+    templateId: "teams_conversion",
+  });
+
+  if (result.success) {
+    downloadBlob(result.blob, result.filename || `${baseName}.docx`);
+    status.value = "success";
+    message.value = "乾淨 Word 已產生並開始下載。";
+  } else {
+    status.value = "error";
+    message.value = result.error || "乾淨 Word 產生失敗。";
+  }
+
+  wordBuilding.value = false;
+}
+
 const apiKeyForCommand = computed(() => staffApiKey.value.trim() || "請輸入_staff_api_key");
 const apiUrlForCommand = computed(() => staffApiUrl.value.trim() || "https://sunnytseng.com/api/math-bank/staff/questions/bulk/");
 const apiGuideGradeIdForCommand = computed(() => selectedApiGuideGradeId.value || "請先選擇年級_UUID");
@@ -1239,7 +1386,21 @@ const fetchApiUrlForCommand = computed(() => {
   }
   return "https://sunnytseng.com/api/math-bank/questions/search/";
 });
-
+const apiGuideGradeIdList = computed(() => {
+  if (!mathBankGrades.value.length) return "尚未查到年級。請輸入 Staff API Key 後按「重新查詢」。";
+  return mathBankGrades.value
+    .map((grade) => `${grade.name}: ${grade.id}`)
+    .join("\n");
+});
+const apiGuideUnitIdList = computed(() => {
+  if (!mathBankUnits.value.length) return "尚未查到單元。請輸入 Staff API Key 後按「重新查詢」。";
+  return mathBankUnits.value
+    .map((unit) => {
+      const gradeName = unit.grade?.name || "-";
+      return `${gradeName} / ${unit.name}: ${unit.id}`;
+    })
+    .join("\n");
+});
 function copyApiCommand(command) {
   if (!staffApiKey.value.trim()) {
     status.value = "error";
@@ -1334,31 +1495,67 @@ import requests
 
 API_KEY = "${apiKeyForCommand.value}"
 API_URL = "${fetchApiUrlForCommand.value}"
+API_ROOT = API_URL.split("/questions/search/")[0]
 OUTPUT = "math-bank-fetch-results.json"
+
+GRADE_ID = "${selectedApiGuideGradeId.value}"
+UNIT_ID = "${selectedApiGuideUnitId.value}"
+GRADE_NAME = ""  # 不知道 UUID 時，可先填年級名稱，例如 "高二"
+UNIT_NAME = ""   # 不知道 UUID 時，可先填單元 / 科目名稱，例如 "直線與圓"
+DIFFICULTY = ""
+STATUS = ""
+
+headers = {"X-API-KEY": API_KEY, "Accept": "application/json"}
+
+def fetch_json(path, params=None):
+    response = requests.get(f"{API_ROOT}{path}", headers=headers, params=params, timeout=30)
+    response.raise_for_status()
+    return response.json()
+
+def print_taxonomy(grades, units):
+    print("可用年級 UUID：")
+    for grade in grades:
+        print(f"- {grade.get('name')}: {grade.get('id')}")
+    print("\n可用單元 / 科目 UUID：")
+    for unit in units:
+        grade_name = (unit.get("grade") or {}).get("name", "-")
+        print(f"- {grade_name} / {unit.get('name')}: {unit.get('id')}")
+
+def find_id(items, name, label):
+    if not name:
+        return ""
+    matches = [item for item in items if item.get("name") == name]
+    if len(matches) == 1:
+        return matches[0]["id"]
+    if not matches:
+        raise SystemExit(f"找不到{label}名稱：{name}")
+    raise SystemExit(f"{label}名稱重複，請改填 UUID：{name}")
+
+grades = fetch_json("/grades/")
+units = fetch_json("/units/")
+grade_id = GRADE_ID or find_id(grades, GRADE_NAME, "年級")
+unit_id = UNIT_ID or find_id(units, UNIT_NAME, "單元 / 科目")
+
+if not grade_id or not unit_id:
+    print_taxonomy(grades, units)
+    raise SystemExit("\n請把需要的年級與單元 / 科目 UUID 填入 GRADE_ID、UNIT_ID 後再執行一次。")
 
 params = {
     "limit": 50,
-    "grade_id": "${apiGuideGradeIdForCommand.value}",
-    "unit_id": "${apiGuideUnitIdForCommand.value}",
-    "difficulty": "",
-    "status": "",
+    "grade_id": grade_id,
+    "unit_id": unit_id,
+    "difficulty": DIFFICULTY,
+    "status": STATUS,
+    "include_details": "true",
 }
-if "請先選擇" in params["grade_id"] or "請先選擇" in params["unit_id"]:
-    raise SystemExit("請先在 UI 選擇年級與單元後再複製程式碼")
-params = {key: value for key, value in params.items() if value != ""}
+params = {key: value for key, value in params.items() if value}
 
-response = requests.get(
-    API_URL,
-    headers={"X-API-KEY": API_KEY, "Accept": "application/json"},
-    params=params,
-    timeout=30,
-)
-response.raise_for_status()
+payload = fetch_json("/questions/search/", params=params)
 
 with open(OUTPUT, "w", encoding="utf-8") as file:
-    json.dump(response.json(), file, ensure_ascii=False, indent=2)
+    json.dump(payload, file, ensure_ascii=False, indent=2)
 
-print(f"已下載題目 JSON：{OUTPUT}")`);
+print(f"已下載 {len(payload.get('results', []))} 題到：{OUTPUT}")`);
 
 function handleFile(selectedFile) {
   if (!selectedFile) return;
