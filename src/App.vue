@@ -1,19 +1,59 @@
 <template>
   <main class="page-shell">
-    <header class="app-header">
+    <section v-if="!isAuthenticated" class="login-shell" aria-live="polite">
+      <form class="login-panel" @submit.prevent="handleLogin">
+        <div class="title-group">
+          <div class="eyebrow">寰宇教育｜教務部內部使用</div>
+          <h1>文件處理登入</h1>
+        </div>
+        <label class="api-key-field">
+          <span>帳號</span>
+          <input
+            v-model.trim="loginForm.account"
+            autocomplete="username"
+            spellcheck="false"
+            type="text"
+            placeholder="請輸入員工帳號"
+          />
+        </label>
+        <label class="api-key-field">
+          <span>密碼</span>
+          <input
+            v-model="loginForm.password"
+            autocomplete="current-password"
+            type="password"
+            placeholder="請輸入密碼"
+          />
+        </label>
+        <label class="checkbox-row">
+          <input v-model="loginForm.stayLoggedIn" type="checkbox" />
+          <span>保持登入</span>
+        </label>
+        <button class="primary-button full" :disabled="loginLoading" type="submit">
+          {{ loginLoading ? "登入中" : "登入" }}
+        </button>
+        <p v-if="loginMessage" class="message error">{{ loginMessage }}</p>
+      </form>
+    </section>
+
+    <header v-if="isAuthenticated" class="app-header">
       <div class="title-group">
         <div class="eyebrow">寰宇教育｜教務部內部使用</div>
         <h1>{{ selectedMode.title }}</h1>
       </div>
       <div class="header-actions">
+        <span class="app-version">{{ currentUser?.name || currentUser?.account }}</span>
         <span class="app-version">v{{ APP_VERSION }}</span>
         <span class="status-pill" :class="selectedMode.paused ? 'maintenance' : status">
           {{ selectedMode.paused ? "開發中" : selectedMode.title }}
         </span>
+        <button class="ghost-button compact" type="button" @click="handleLogout">
+          登出
+        </button>
       </div>
     </header>
 
-    <nav class="tab-bar" aria-label="功能切換">
+    <nav v-if="isAuthenticated" class="tab-bar" aria-label="功能切換">
       <button
         v-for="item in modes"
         :key="item.value"
@@ -28,7 +68,7 @@
       </button>
     </nav>
 
-    <section v-if="selectedMode.paused" class="maintenance-panel" aria-live="polite">
+    <section v-if="isAuthenticated && selectedMode.paused" class="maintenance-panel" aria-live="polite">
       <div>
         <span class="maintenance-kicker">開發中</span>
         <h2>{{ selectedMode.title }}暫停使用</h2>
@@ -39,16 +79,16 @@
       </button>
     </section>
     <WordTemplateWorkspace
-      v-else-if="isWordTemplateMode"
+      v-else-if="isAuthenticated && isWordTemplateMode"
       :staff-api-key="staffApiKey"
     />
     <MathBankQuestionEditor
-      v-else-if="isQuestionEditorMode"
+      v-else-if="isAuthenticated && isQuestionEditorMode"
       v-model:staff-api-key="staffApiKey"
       @copy="copyText"
     />
     <section
-      v-else
+      v-else-if="isAuthenticated"
       class="workspace"
       :class="{
         'question-bank-workspace': isQuestionBankMode,
@@ -622,6 +662,7 @@
     </section>
 
     <ExpandedEditorModal
+      v-if="isAuthenticated"
       :editor="editorConfig"
       @close="expandedEditor = null"
       @copy="copyText"
@@ -640,10 +681,15 @@ import WordTemplateWorkspace from "./components/WordTemplateWorkspace.vue";
 import {
   buildMathBankJson,
   extractPdfText,
+  fetchDocumentProcessingMe,
   generateWordDocument,
   getStaffMathBankQuestion,
+  getStoredAuthToken,
+  getStoredAuthUser,
   listMathBankGrades,
   listMathBankUnits,
+  loginDocumentProcessing,
+  logoutDocumentProcessing,
   processAiText,
   searchStaffMathBankQuestions,
 } from "./services/api";
@@ -721,6 +767,15 @@ const defaultJsonUnitId = "e886b5f1-571c-46b7-afb3-a9501024b8b9";
 
 const fileInput = ref(null);
 const file = ref(null);
+const isAuthenticated = ref(Boolean(getStoredAuthToken()));
+const currentUser = ref(getStoredAuthUser());
+const loginLoading = ref(false);
+const loginMessage = ref("");
+const loginForm = ref({
+  account: "",
+  password: "",
+  stayLoggedIn: true,
+});
 const mode = ref("text-extract");
 const text = ref("");
 const solutionDraft = ref("");
@@ -825,6 +880,7 @@ const editorConfig = computed(() => {
 
 onMounted(() => {
   showReleaseAnnouncementIfNeeded();
+  validateAuthSession();
 });
 
 onBeforeUnmount(() => {
@@ -844,6 +900,54 @@ function switchMode(value) {
   if (value === "api-guide") {
     loadMathBankTaxonomy();
   }
+}
+
+async function validateAuthSession() {
+  if (!getStoredAuthToken()) return;
+  const result = await fetchDocumentProcessingMe();
+  if (result.success) {
+    currentUser.value = result.user;
+    isAuthenticated.value = true;
+    return;
+  }
+  logoutDocumentProcessing();
+  isAuthenticated.value = false;
+  currentUser.value = null;
+  loginMessage.value = "登入狀態已失效，請重新登入。";
+}
+
+async function handleLogin() {
+  if (!loginForm.value.account || !loginForm.value.password) {
+    loginMessage.value = "請輸入帳號與密碼。";
+    return;
+  }
+
+  loginLoading.value = true;
+  loginMessage.value = "";
+  const result = await loginDocumentProcessing({
+    account: loginForm.value.account,
+    password: loginForm.value.password,
+    stayLoggedIn: loginForm.value.stayLoggedIn,
+  });
+  loginLoading.value = false;
+
+  if (!result.success) {
+    loginMessage.value = result.error || "登入失敗。";
+    return;
+  }
+
+  currentUser.value = result.user;
+  isAuthenticated.value = true;
+  loginForm.value.password = "";
+}
+
+function handleLogout() {
+  logoutDocumentProcessing();
+  isAuthenticated.value = false;
+  currentUser.value = null;
+  loginForm.value.password = "";
+  status.value = "idle";
+  message.value = "";
 }
 
 function handleStaffApiKeyInput() {

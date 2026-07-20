@@ -3,7 +3,52 @@ const API_URL =
   (import.meta.env.PROD
     ? "https://sunnytseng.com/api"
     : "http://127.0.0.1:8000/api");
-const DOCUMENT_PROCESSING_API_KEY = "huanyu-document-processing-colleague-key";
+const AUTH_TOKEN_KEY = "auth.token";
+const AUTH_USER_KEY = "auth.documentProcessingUser";
+
+export function getStoredAuthToken() {
+  return (
+    window.localStorage.getItem(AUTH_TOKEN_KEY) ||
+    window.sessionStorage.getItem(AUTH_TOKEN_KEY) ||
+    ""
+  );
+}
+
+export function getStoredAuthUser() {
+  const raw =
+    window.localStorage.getItem(AUTH_USER_KEY) ||
+    window.sessionStorage.getItem(AUTH_USER_KEY) ||
+    "";
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function storeAuthSession({ token, user, stayLoggedIn }) {
+  const storage = stayLoggedIn ? window.localStorage : window.sessionStorage;
+  const otherStorage = stayLoggedIn ? window.sessionStorage : window.localStorage;
+  storage.setItem(AUTH_TOKEN_KEY, token);
+  storage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  otherStorage.removeItem(AUTH_TOKEN_KEY);
+  otherStorage.removeItem(AUTH_USER_KEY);
+}
+
+export function logoutDocumentProcessing() {
+  window.localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.localStorage.removeItem(AUTH_USER_KEY);
+  window.sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  window.sessionStorage.removeItem(AUTH_USER_KEY);
+}
+
+function getAuthHeaders(headers = {}) {
+  const token = getStoredAuthToken();
+  return token
+    ? { ...headers, Authorization: `Bearer ${token}` }
+    : headers;
+}
 
 async function parseJson(response) {
   try {
@@ -15,8 +60,59 @@ async function parseJson(response) {
 
 function getAuthError(response, result, fallback) {
   if (response.status === 401 || response.status === 403)
-    return "後端尚未開通。";
+    return "請先登入，或重新登入後再操作。";
   return result.error || result.detail || fallback;
+}
+
+export async function loginDocumentProcessing({ account, password, stayLoggedIn }) {
+  try {
+    const response = await fetch(`${API_URL}/document-processing/token/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account, password }),
+    });
+    const result = await parseJson(response);
+
+    if (!response.ok || !result.access) {
+      return {
+        success: false,
+        error: result.detail || result.error || "登入失敗，請確認帳號密碼。",
+        status: response.status,
+      };
+    }
+
+    const user = {
+      account: result.account || account,
+      name: result.name || result.account || account,
+    };
+    storeAuthSession({ token: result.access, user, stayLoggedIn });
+    return { success: true, user, token: result.access };
+  } catch (error) {
+    console.error("loginDocumentProcessing failed", error);
+    return { success: false, error: "無法連線至登入服務。", status: 0 };
+  }
+}
+
+export async function fetchDocumentProcessingMe() {
+  try {
+    const response = await fetch(`${API_URL}/document-processing/me/`, {
+      headers: getAuthHeaders({ Accept: "application/json" }),
+    });
+    const result = await parseJson(response);
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: getAuthError(response, result, "登入狀態已失效。"),
+        status: response.status,
+      };
+    }
+
+    return { success: true, user: result };
+  } catch (error) {
+    console.error("fetchDocumentProcessingMe failed", error);
+    return { success: false, error: "無法確認登入狀態。", status: 0 };
+  }
 }
 
 function withQuery(path, params = {}) {
@@ -56,10 +152,9 @@ async function fetchMathBankJson(path, params = {}, options = {}) {
 async function postDocumentJson(path, body) {
   const response = await fetch(`${API_URL}${path}`, {
     method: "POST",
-    headers: {
+    headers: getAuthHeaders({
       "Content-Type": "application/json",
-      "X-API-KEY": DOCUMENT_PROCESSING_API_KEY,
-    },
+    }),
     body: JSON.stringify(body),
   });
   const result = await parseJson(response);
@@ -225,7 +320,7 @@ export async function extractPdfText({ file, mode }) {
   try {
     const response = await fetch(`${API_URL}/pdf/extract/`, {
       method: "POST",
-      headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
+      headers: getAuthHeaders(),
       body: formData,
     });
     const result = await parseJson(response);
@@ -251,10 +346,9 @@ export async function processAiText({ text }) {
   try {
     const response = await fetch(`${API_URL}/ai/process/`, {
       method: "POST",
-      headers: {
+      headers: getAuthHeaders({
         "Content-Type": "application/json",
-        "X-API-KEY": DOCUMENT_PROCESSING_API_KEY,
-      },
+      }),
       body: JSON.stringify({ text, workflow: "solution" }),
     });
     const result = await parseJson(response);
@@ -293,7 +387,7 @@ export async function removeHandwriting({
   try {
     const response = await fetch(`${API_URL}/pdf/remove-handwriting/`, {
       method: "POST",
-      headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
+      headers: getAuthHeaders(),
       body: formData,
     });
     const contentType = response.headers.get("content-type") || "";
@@ -340,7 +434,7 @@ export async function previewHandwriting({
   try {
     const response = await fetch(`${API_URL}/pdf/preview-handwriting/`, {
       method: "POST",
-      headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
+      headers: getAuthHeaders(),
       body: formData,
     });
     const result = await parseJson(response);
@@ -373,7 +467,7 @@ export async function parseWordDocument({
   try {
     const response = await fetch(`${API_URL}/word/parse/`, {
       method: "POST",
-      headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
+      headers: getAuthHeaders(),
       body: formData,
     });
     const result = await parseJson(response);
@@ -397,7 +491,7 @@ export async function parseWordDocument({
 export async function fetchWordTemplates() {
   try {
     const response = await fetch(`${API_URL}/word/templates/`, {
-      headers: { "X-API-KEY": DOCUMENT_PROCESSING_API_KEY },
+      headers: getAuthHeaders({ Accept: "application/json" }),
     });
     const result = await parseJson(response);
 
@@ -428,10 +522,9 @@ export async function generateWordDocument({
   try {
     const response = await fetch(`${API_URL}/word/generate/`, {
       method: "POST",
-      headers: {
+      headers: getAuthHeaders({
         "Content-Type": "application/json",
-        "X-API-KEY": DOCUMENT_PROCESSING_API_KEY,
-      },
+      }),
       body: JSON.stringify({
         document,
         filename,
