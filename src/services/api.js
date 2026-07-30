@@ -561,13 +561,17 @@ export async function generateWordFromBank({
   templateId = "high_school_math_handout",
   mode = "teaching",
   sectionMode = "unit",
+  apiKey = "",
 }) {
   try {
+    const headers = getAuthHeaders({
+      "Content-Type": "application/json",
+    });
+    if (apiKey.trim()) headers["X-API-KEY"] = apiKey.trim();
+
     const response = await fetch(`${API_URL}/word/generate-from-bank/`, {
       method: "POST",
-      headers: getAuthHeaders({
-        "Content-Type": "application/json",
-      }),
+      headers,
       body: JSON.stringify({
         question_ids: questionIds,
         filename,

@@ -1412,6 +1412,7 @@ async function generateSelectedQuestionsHandout() {
     templateId: bankHandoutForm.value.templateId,
     mode: bankHandoutForm.value.mode,
     sectionMode: bankHandoutForm.value.sectionMode,
+    apiKey: staffApiKey.value,
   });
 
   if (result.success) {
