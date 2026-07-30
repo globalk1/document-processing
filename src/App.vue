@@ -879,7 +879,6 @@ const editorConfig = computed(() => {
 });
 
 onMounted(() => {
-  showReleaseAnnouncementIfNeeded();
   validateAuthSession();
 });
 
@@ -908,6 +907,7 @@ async function validateAuthSession() {
   if (result.success) {
     currentUser.value = result.user;
     isAuthenticated.value = true;
+    showReleaseAnnouncementIfNeeded();
     return;
   }
   logoutDocumentProcessing();
@@ -939,6 +939,7 @@ async function handleLogin() {
   currentUser.value = result.user;
   isAuthenticated.value = true;
   loginForm.value.password = "";
+  showReleaseAnnouncementIfNeeded();
 }
 
 function handleLogout() {

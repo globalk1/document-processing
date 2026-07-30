@@ -85,9 +85,32 @@
 
       <section class="action-box">
         <h3>操作</h3>
-        <button class="primary-button full" type="button" @click="startCreateQuestion">
-          新增草稿
-        </button>
+        <input
+          ref="jsonFileInputRef"
+          class="visually-hidden"
+          type="file"
+          accept=".json,application/json"
+          @change="handleJsonFileUpload"
+        />
+        <div class="create-source-group">
+          <span class="field-label">建立方式</span>
+          <div class="create-source-grid">
+            <button class="primary-button full" type="button" @click="startCreateQuestion">
+              手動新增題目
+            </button>
+            <button class="primary-button full" type="button" @click="openJsonFilePicker">
+              匯入 JSON 檔
+            </button>
+          </div>
+        </div>
+        <p v-if="importedJsonQuestions.length" class="import-summary">
+          {{ importedJsonFilename || "JSON" }} · {{ importedJsonQuestions.length }} 題已讀取
+        </p>
+        <div class="cloud-save-group">
+          <button class="primary-button full" :disabled="saving" type="button" @click="saveQuestionFromShortcut">
+            {{ cloudSaveLabel }}
+          </button>
+        </div>
       </section>
 
       <p v-if="message" class="message" :class="status">{{ message }}</p>
@@ -214,6 +237,77 @@
                 </div>
                 <strong>{{ editingQuestionId ? shortId(editingQuestionId) : "New" }}</strong>
               </header>
+
+              <section v-if="importedJsonQuestions.length" class="imported-question-list">
+                <header>
+                  <strong>選擇要編輯的題目</strong>
+                  <span>{{ importedJsonSelectedIndex + 1 }} / {{ importedJsonQuestions.length }}</span>
+                </header>
+                <article
+                  v-for="(question, index) in displayedImportedJsonQuestions"
+                  :key="`imported-question-${index}`"
+                  class="imported-question-card"
+                  :class="{ active: importedJsonSelectedIndex === index }"
+                  @click="selectImportedQuestion(index)"
+                >
+                  <header>
+                    <div>
+                      <span>第 {{ index + 1 }} 題</span>
+                      <small>{{ question.difficulty || "A" }} · {{ question.type || "calculation" }}</small>
+                    </div>
+                    <button
+                      class="primary-inline-button compact"
+                      type="button"
+                      @click.stop="selectImportedQuestion(index)"
+                    >
+                      編輯
+                    </button>
+                  </header>
+                  <section>
+                    <strong>題目</strong>
+                    <p>{{ importedQuestionPrompt(question, index) }}</p>
+                  </section>
+                  <div class="imported-question-detail-grid">
+                    <section>
+                      <strong>答案</strong>
+                      <p>{{ importedQuestionAnswer(question) }}</p>
+                    </section>
+                    <section>
+                      <strong>詳解</strong>
+                      <p>{{ importedQuestionSolution(question) }}</p>
+                    </section>
+                  </div>
+                </article>
+              </section>
+
+              <div
+                v-if="questionDetailEditorOpen"
+                class="question-detail-modal-backdrop"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="question-detail-editor-title"
+              >
+                <section class="question-detail-modal-panel">
+                  <header class="question-bank-toolbar">
+                    <div>
+                      <h2 id="question-detail-editor-title" class="section-title">
+                        {{ importedJsonQuestions.length ? `編輯第 ${importedJsonSelectedIndex + 1} 題` : editingQuestionId ? "編輯題目" : "新增題目" }}
+                      </h2>
+                      <p>編輯題目內容、答案、詳解、思維與圖片資產。</p>
+                    </div>
+                    <button class="icon-button" title="關閉" type="button" @click="closeQuestionDetailEditor">
+                      ×
+                    </button>
+                  </header>
+
+                  <div class="question-detail-modal-grid">
+                    <section class="word-workflow-section question-detail-fields-section">
+                      <header class="word-workflow-header">
+                        <div>
+                          <h3>題目內容</h3>
+                        </div>
+                        <strong>{{ importedJsonQuestions.length ? `第 ${importedJsonSelectedIndex + 1} 題` : editingQuestionId ? shortId(editingQuestionId) : "New" }}</strong>
+                      </header>
 
               <div class="filter-grid two">
                 <label>
@@ -377,6 +471,67 @@
                 </button>
               </article>
             </section>
+                  </div>
+                </section>
+              </div>
+
+            </section>
+
+            <section class="word-workflow-section question-json-section">
+              <header class="word-workflow-header">
+                <div>
+                  <span>02</span>
+                  <h3>JSON 編輯</h3>
+                </div>
+                <strong>匯入 / 自動輸出</strong>
+              </header>
+
+              <div class="json-editor-actions">
+                <button class="secondary-button compact" type="button" @click="openJsonFilePicker">
+                  匯入 JSON 檔
+                </button>
+                <button class="ghost-button compact" type="button" @click="copyOutputJson">
+                  複製目前 JSON
+                </button>
+                <button class="primary-inline-button compact" :disabled="saving" type="button" @click="saveQuestionFromShortcut">
+                  {{ cloudSaveLabel }}
+                </button>
+                <button class="primary-inline-button compact" type="button" @click="downloadOutputJson">
+                  輸出 JSON
+                </button>
+              </div>
+
+              <label
+                class="field-label json-drop-zone"
+                @dragover.prevent
+                @drop.prevent="handleJsonFileDrop"
+              >
+                <span class="json-input-header">
+                  <span>Input JSON</span>
+                  <button class="secondary-button compact" type="button" @click="applyJsonToForm">
+                    讀取貼上內容
+                  </button>
+                </span>
+                <textarea
+                  v-model="jsonEditorText"
+                  class="textarea compact-textarea question-json-textarea"
+                  spellcheck="false"
+                  placeholder='貼上單題 JSON，或包含 questions 陣列的 JSON。'
+                ></textarea>
+              </label>
+
+              <p v-if="jsonParseError" class="message error">{{ jsonParseError }}</p>
+
+              <label class="field-label">
+                目前表單 JSON（自動更新）
+                <textarea
+                  class="textarea compact-textarea question-json-textarea output"
+                  readonly
+                  spellcheck="false"
+                  :value="outputJsonText"
+                ></textarea>
+              </label>
+            </section>
           </div>
 
           <aside class="question-preview-column">
@@ -489,6 +644,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import MathText from "./MathText.vue";
 import {
   createStaffMathBankQuestion,
+  createStaffMathBankQuestionsBulk,
   deleteStaffMathBankQuestion,
   getStaffMathBankQuestion,
   listMathBankGrades,
@@ -550,12 +706,19 @@ const hasMore = ref(false);
 const loading = ref(false);
 const loadingMore = ref(false);
 const resultSentinelRef = ref(null);
+const jsonFileInputRef = ref(null);
 const editorOpen = ref(false);
+const questionDetailEditorOpen = ref(false);
 const previewEditorOpen = ref(false);
 const saving = ref(false);
 const status = ref("idle");
 const message = ref("");
 const allowDuplicate = ref(false);
+const jsonEditorText = ref("");
+const jsonParseError = ref("");
+const importedJsonQuestions = ref([]);
+const importedJsonFilename = ref("");
+const importedJsonSelectedIndex = ref(0);
 const searchTimer = ref(null);
 let resultObserver = null;
 const filters = reactive({
@@ -579,10 +742,28 @@ const filteredFormUnits = computed(() =>
     : [],
 );
 const formSummary = computed(() => {
+  if (importedJsonQuestions.value.length > 1) {
+    return `已讀取 ${importedJsonQuestions.value.length} 題 JSON，目前表單顯示第 ${importedJsonSelectedIndex.value + 1} 題。`;
+  }
   if (editingQuestionId.value) {
     return "校正題目內容、答案、詳解與補充資產。";
   }
   return "新題目會以草稿建立。";
+});
+const outputJsonText = computed(() => JSON.stringify(buildOutputJsonPayload(), null, 2));
+const displayedImportedJsonQuestions = computed(() =>
+  importedJsonQuestions.value.map((question, index) =>
+    index === importedJsonSelectedIndex.value && !editingQuestionId.value
+      ? { ...question, ...buildPayload() }
+      : question,
+  ),
+);
+const cloudSaveLabel = computed(() => {
+  if (saving.value) return "儲存中";
+  if (importedJsonQuestions.value.length > 1) {
+    return `全部存入題庫（${importedJsonQuestions.value.length} 題）`;
+  }
+  return "存入題庫";
 });
 
 watch(
@@ -802,20 +983,36 @@ async function selectQuestion(id) {
     [id]: result.data,
   };
   applyQuestionToForm(result.data);
+  clearJsonSource();
   editorOpen.value = true;
+  questionDetailEditorOpen.value = true;
   status.value = "success";
   message.value = "題目已載入。";
 }
 
 function startCreateQuestion() {
   resetQuestionForm();
+  clearJsonSource();
   editorOpen.value = true;
+  questionDetailEditorOpen.value = true;
+}
+
+function startCreateQuestionFromJson() {
+  resetQuestionForm();
+  clearJsonSource();
+  editorOpen.value = true;
+  questionDetailEditorOpen.value = false;
+  status.value = "idle";
+  message.value = "";
 }
 
 function resetQuestionForm() {
   selectedQuestionId.value = "";
   editingQuestionId.value = "";
   allowDuplicate.value = false;
+  importedJsonQuestions.value = [];
+  importedJsonFilename.value = "";
+  importedJsonSelectedIndex.value = 0;
   Object.assign(questionForm, createEmptyQuestionForm(), {
     grade_id:
       filters.grade_id === filterNoneValue || filters.grade_id === filterAllValue
@@ -826,14 +1023,24 @@ function resetQuestionForm() {
         ? ""
         : filters.unit_id,
   });
+  jsonParseError.value = "";
 }
 
 function closeEditor() {
   editorOpen.value = false;
+  questionDetailEditorOpen.value = false;
   previewEditorOpen.value = false;
 }
 
+function closeQuestionDetailEditor() {
+  saveCurrentImportedQuestionDraft();
+  questionDetailEditorOpen.value = false;
+}
+
 function applyQuestionToForm(question) {
+  importedJsonQuestions.value = [];
+  importedJsonFilename.value = "";
+  importedJsonSelectedIndex.value = 0;
   editingQuestionId.value = question.id || "";
   allowDuplicate.value = false;
   Object.assign(questionForm, {
@@ -904,6 +1111,338 @@ function buildPayload() {
   };
 }
 
+function buildOutputJsonPayload() {
+  if (importedJsonQuestions.value.length > 1 && !editingQuestionId.value) {
+    return {
+      questions: importedJsonQuestions.value.map((question, index) =>
+        index === importedJsonSelectedIndex.value
+          ? { ...question, ...buildPayload() }
+          : normalizeQuestionJsonPayload(question),
+      ),
+    };
+  }
+  return {
+    ...(editingQuestionId.value ? { id: editingQuestionId.value } : {}),
+    ...buildPayload(),
+  };
+}
+
+function clearJsonSource() {
+  jsonEditorText.value = "";
+  jsonParseError.value = "";
+  importedJsonQuestions.value = [];
+  importedJsonFilename.value = "";
+  importedJsonSelectedIndex.value = 0;
+}
+
+function saveCurrentImportedQuestionDraft() {
+  if (!importedJsonQuestions.value.length || editingQuestionId.value) return;
+  const index = importedJsonSelectedIndex.value;
+  importedJsonQuestions.value = importedJsonQuestions.value.map((question, questionIndex) =>
+    questionIndex === index ? { ...question, ...buildPayload() } : question,
+  );
+}
+
+function selectImportedQuestion(index) {
+  if (index === importedJsonSelectedIndex.value) {
+    questionDetailEditorOpen.value = true;
+    return;
+  }
+  const question = importedJsonQuestions.value[index];
+  if (!question) return;
+  saveCurrentImportedQuestionDraft();
+  importedJsonSelectedIndex.value = index;
+  applyQuestionJsonToForm(question);
+  questionDetailEditorOpen.value = true;
+  jsonParseError.value = "";
+  status.value = "success";
+  message.value = `正在編輯第 ${index + 1} 題。`;
+}
+
+function openJsonFilePicker() {
+  jsonFileInputRef.value?.click();
+}
+
+async function handleJsonFileUpload(event) {
+  const input = event.target;
+  const selectedFile = input.files?.[0];
+  if (!selectedFile) return;
+
+  if (!editorOpen.value) {
+    resetQuestionForm();
+    editorOpen.value = true;
+    await nextTick();
+  }
+  await importJsonFile(selectedFile);
+  input.value = "";
+}
+
+async function handleJsonFileDrop(event) {
+  const selectedFile = event.dataTransfer?.files?.[0];
+  if (!selectedFile) return;
+  if (!editorOpen.value) {
+    resetQuestionForm();
+    editorOpen.value = true;
+    await nextTick();
+  }
+  await importJsonFile(selectedFile);
+}
+
+async function importJsonFile(selectedFile) {
+  try {
+    importedJsonFilename.value = selectedFile.name;
+    jsonEditorText.value = await selectedFile.text();
+    applyJsonToForm();
+    if (!jsonParseError.value) {
+      const count = importedJsonQuestions.value.length;
+      message.value = `已匯入 ${selectedFile.name}，共 ${count} 題，可按「${cloudSaveLabel.value}」。`;
+    }
+  } catch (error) {
+    jsonParseError.value = `JSON 檔案讀取失敗：${error.message}`;
+    status.value = "error";
+    message.value = jsonParseError.value;
+  }
+}
+
+function applyJsonToForm() {
+  const rawJson = jsonEditorText.value.trim();
+  if (!rawJson) {
+    importedJsonQuestions.value = [];
+    jsonParseError.value = "請先貼上或輸入 JSON。";
+    status.value = "error";
+    message.value = jsonParseError.value;
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch (error) {
+    importedJsonQuestions.value = [];
+    jsonParseError.value = `JSON 格式錯誤：${error.message}`;
+    status.value = "error";
+    message.value = jsonParseError.value;
+    return;
+  }
+
+  const questionList = extractQuestionJsonList(parsed);
+  if (!questionList.length) {
+    jsonParseError.value = "找不到可套用的題目 JSON。";
+    status.value = "error";
+    message.value = jsonParseError.value;
+    return;
+  }
+
+  importedJsonQuestions.value = questionList;
+  importedJsonSelectedIndex.value = 0;
+  applyQuestionJsonToForm(questionList[0]);
+  jsonParseError.value = "";
+  status.value = "success";
+  message.value =
+    questionList.length > 1
+    ? `JSON 已讀取 ${questionList.length} 題，表單先顯示第 1 題。`
+      : "JSON 已讀取，確認內容後可按「存入題庫」。";
+}
+
+function saveQuestionFromShortcut() {
+  if (!editorOpen.value) {
+    status.value = "error";
+    message.value = "請先新增草稿或匯入 JSON 檔，再存入題庫。";
+    return;
+  }
+  if (importedJsonQuestions.value.length > 1 && !editingQuestionId.value) {
+    return saveImportedQuestionsBulk();
+  }
+  return saveQuestion();
+}
+
+function copyOutputJson() {
+  copyText(outputJsonText.value);
+  status.value = "success";
+  message.value = "已複製目前表單 JSON。";
+}
+
+function downloadOutputJson() {
+  const suffix = editingQuestionId.value ? shortId(editingQuestionId.value) : "new";
+  triggerDownload(
+    outputJsonText.value,
+    `math-bank-question-${suffix}.json`,
+    "application/json;charset=utf-8",
+  );
+  status.value = "success";
+  message.value = "已下載目前表單 JSON。";
+}
+
+async function saveImportedQuestionsBulk() {
+  if (!requireApiKey()) return;
+  saveCurrentImportedQuestionDraft();
+  const payload = {
+    questions: importedJsonQuestions.value.map(normalizeQuestionJsonPayload),
+  };
+  const validationError = validateQuestionPayloads(payload.questions);
+  if (validationError) {
+    status.value = "error";
+    message.value = validationError;
+    return;
+  }
+
+  saving.value = true;
+  status.value = "loading";
+  message.value = `正在把 ${payload.questions.length} 題存入題庫...`;
+  const result = await createStaffMathBankQuestionsBulk(payload, {
+    apiKey: localStaffApiKey.value,
+  });
+  saving.value = false;
+
+  if (!result.success) {
+    status.value = "error";
+    message.value = result.error || "JSON 題目批次入庫失敗。";
+    return;
+  }
+
+  importedJsonQuestions.value = [];
+  importedJsonFilename.value = "";
+  editorOpen.value = false;
+  questionDetailEditorOpen.value = false;
+  previewEditorOpen.value = false;
+  await loadQuestions();
+  if (status.value !== "error") {
+    status.value = "success";
+    message.value = `已新增 ${payload.questions.length} 題到題庫草稿。`;
+  }
+}
+
+function validateQuestionPayloads(questionPayloads) {
+  const invalidIndex = questionPayloads.findIndex((question) => {
+    if (!question.grade_id || !question.unit_id) return true;
+    return !String(question.prompt_md || "").trim() &&
+      !(question.assets || []).some(hasAssetContent);
+  });
+  if (invalidIndex < 0) return "";
+  return `第 ${invalidIndex + 1} 題缺少年級、單元或題目內容，請先補齊再存入題庫。`;
+}
+
+function extractQuestionJsonList(value) {
+  if (Array.isArray(value)) return value.filter(isPlainObject);
+  if (!isPlainObject(value)) return [];
+  if (Array.isArray(value.questions)) return value.questions.filter(isPlainObject);
+  if (isPlainObject(value.question)) return [value.question];
+  return [value];
+}
+
+function normalizeQuestionJsonPayload(questionJson = {}) {
+  const payload = {
+    grade_id: stringifyFormValue(firstDefined(questionJson.grade_id, questionJson.grade?.id)),
+    unit_id: stringifyFormValue(firstDefined(questionJson.unit_id, questionJson.unit?.id)),
+    type: stringifyFormValue(firstDefined(questionJson.type, "calculation")) || "calculation",
+    difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, "A")) || "A",
+    prompt_md: stringifyFormValue(firstDefined(questionJson.prompt_md, questionJson.prompt)),
+    answer_md: stringifyFormValue(firstDefined(questionJson.answer_md, questionJson.answer)),
+    solution_md: stringifyFormValue(firstDefined(questionJson.solution_md, questionJson.solution)),
+    status: "draft",
+    visibility: "public",
+    thinking: Array.isArray(questionJson.thinking)
+      ? questionJson.thinking.map((item) => String(item || "").trim()).filter(Boolean)
+      : splitThinking(questionJson.thinking),
+    assets: Array.isArray(questionJson.assets) ? questionJson.assets.map(normalizeAsset) : [],
+  };
+  if (allowDuplicate.value) payload.duplicate_policy = "allow";
+  return payload;
+}
+
+function importedQuestionPrompt(questionJson, index) {
+  return previewQuestionJsonText(
+    firstDefined(questionJson?.prompt_md, questionJson?.prompt),
+    `第 ${index + 1} 題尚未填題目`,
+    260,
+  );
+}
+
+function importedQuestionAnswer(questionJson) {
+  return previewQuestionJsonText(
+    firstDefined(questionJson?.answer_md, questionJson?.answer),
+    "尚未填答案",
+    120,
+  );
+}
+
+function importedQuestionSolution(questionJson) {
+  return previewQuestionJsonText(
+    firstDefined(questionJson?.solution_md, questionJson?.solution),
+    "尚未填詳解",
+    120,
+  );
+}
+
+function previewQuestionJsonText(value, fallback, maxLength) {
+  const text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return fallback;
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function applyQuestionJsonToForm(questionJson) {
+  const thinkingValue = hasOwn(questionJson, "thinking")
+    ? questionJson.thinking
+    : questionForm.thinking;
+  Object.assign(questionForm, {
+    grade_id: stringifyFormValue(
+      firstDefined(questionJson.grade_id, questionJson.grade?.id, questionForm.grade_id),
+    ),
+    unit_id: stringifyFormValue(
+      firstDefined(questionJson.unit_id, questionJson.unit?.id, questionForm.unit_id),
+    ),
+    type: stringifyFormValue(firstDefined(questionJson.type, questionForm.type)) || "calculation",
+    difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, questionForm.difficulty)) || "A",
+    prompt_md: stringifyFormValue(
+      firstDefined(questionJson.prompt_md, questionJson.prompt, questionForm.prompt_md),
+    ),
+    answer_md: stringifyFormValue(
+      firstDefined(questionJson.answer_md, questionJson.answer, questionForm.answer_md),
+    ),
+    solution_md: stringifyFormValue(
+      firstDefined(questionJson.solution_md, questionJson.solution, questionForm.solution_md),
+    ),
+    thinking: formatThinking(thinkingValue),
+    status: stringifyFormValue(firstDefined(questionJson.status, questionForm.status)) || "draft",
+    visibility:
+      stringifyFormValue(firstDefined(questionJson.visibility, questionForm.visibility)) || "public",
+    assets: Array.isArray(questionJson.assets)
+      ? questionJson.assets.map(normalizeAsset)
+      : questionForm.assets,
+  });
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function stringifyFormValue(value) {
+  if (value === undefined || value === null) return "";
+  return String(value);
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value || {}, key);
+}
+
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function triggerDownload(content, filename, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function validateForm() {
   if (!questionForm.grade_id) return "請選擇年級。";
   if (!questionForm.unit_id) return "請選擇單元。";
@@ -945,7 +1484,9 @@ async function saveQuestion() {
   selectedQuestionId.value = editingQuestionId.value;
   mergeQuestions([savedQuestion], false);
   applyQuestionToForm(savedQuestion);
+  clearJsonSource();
   editorOpen.value = false;
+  questionDetailEditorOpen.value = false;
   previewEditorOpen.value = false;
   status.value = "success";
   message.value = wasEditing ? "題目已儲存。" : "題目已建立。";
@@ -973,6 +1514,7 @@ async function deleteQuestion() {
   questions.value = questions.value.filter((question) => question.id !== deletedId);
   resetQuestionForm();
   editorOpen.value = false;
+  questionDetailEditorOpen.value = false;
   previewEditorOpen.value = false;
   status.value = "success";
   message.value = "題目已刪除。";
