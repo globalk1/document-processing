@@ -233,15 +233,54 @@
             >
               複製選題內容
             </button>
-            <div class="selection-action-grid">
-              <button class="secondary-button full" disabled type="button">
-                生成講義
-              </button>
-              <button class="secondary-button full" disabled type="button">
-                生成考卷
+
+            <div class="handout-generate-panel">
+              <label>
+                <span class="field-label">講義模板</span>
+                <select v-model="bankHandoutForm.templateId" class="select-input">
+                  <option value="high_school_math_handout">高中數學講義</option>
+                  <option value="junior_math_handout">國中數學講義</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">輸出版本</span>
+                <select v-model="bankHandoutForm.mode" class="select-input">
+                  <option value="teaching">教師版：含答案與詳解</option>
+                  <option value="student">學生版：隱藏答案與詳解</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">分組方式</span>
+                <select v-model="bankHandoutForm.sectionMode" class="select-input">
+                  <option value="unit">依年級與單元</option>
+                  <option value="selected">依選題順序</option>
+                  <option value="type">依題型</option>
+                  <option value="difficulty">依難度</option>
+                </select>
+              </label>
+              <label>
+                <span class="field-label">講義標題</span>
+                <input
+                  v-model.trim="bankHandoutForm.title"
+                  class="text-input"
+                  type="text"
+                  placeholder="題庫選題講義"
+                />
+              </label>
+              <button
+                class="primary-button full"
+                :disabled="bankHandoutGenerating || !selectedMathBankQuestions.length"
+                type="button"
+                @click="generateSelectedQuestionsHandout"
+              >
+                {{ bankHandoutGenerating ? "生成中" : "生成講義 Word" }}
               </button>
             </div>
-            <span class="selection-hint">講義與考卷生成功能尚未實作</span>
+
+            <button class="secondary-button full" disabled type="button">
+              生成考卷
+            </button>
+            <span class="selection-hint">考卷生成會沿用同一批選題，待後續開放。</span>
             <button
               class="secondary-button full"
               :disabled="!selectedMathBankQuestions.length"
@@ -683,6 +722,7 @@ import {
   extractPdfText,
   fetchDocumentProcessingMe,
   generateWordDocument,
+  generateWordFromBank,
   getStaffMathBankQuestion,
   getStoredAuthToken,
   getStoredAuthUser,
@@ -799,11 +839,18 @@ const mathBankNextCursor = ref(null);
 const questionBankSentinelRef = ref(null);
 const jsonBuilding = ref(false);
 const wordBuilding = ref(false);
+const bankHandoutGenerating = ref(false);
 const staffApiKey = ref(defaultStaffApiKey);
 const staffApiUrl = ref("https://sunnytseng.com/api/math-bank/staff/questions/bulk/");
 const apiGuideSelection = ref({
   grade_id: filterNoneValue,
   unit_id: filterNoneValue,
+});
+const bankHandoutForm = ref({
+  templateId: "high_school_math_handout",
+  mode: "teaching",
+  sectionMode: "unit",
+  title: "題庫選題講義",
 });
 const mathBankFilters = ref({
   search: "",
@@ -1338,6 +1385,45 @@ async function downloadSelectedQuestionsJson() {
   downloadJson(payload, "selected-math-bank-questions.json");
   status.value = "success";
   message.value = `已下載 ${payload.questions.length} 題選題 JSON。`;
+}
+
+async function generateSelectedQuestionsHandout() {
+  if (!requireStaffApiKey()) return;
+  if (!selectedMathBankQuestionIds.value.length) {
+    status.value = "error";
+    message.value = "請先選擇題目。";
+    return;
+  }
+
+  bankHandoutGenerating.value = true;
+  status.value = "loading";
+  message.value = "正在生成題庫講義 Word...";
+
+  await Promise.all(
+    selectedMathBankQuestionIds.value.map((id) => ensureMathBankQuestionDetail(id)),
+  );
+
+  const title = bankHandoutForm.value.title || "題庫選題講義";
+  const suffix = bankHandoutForm.value.mode === "student" ? "學生版" : "教師版";
+  const result = await generateWordFromBank({
+    questionIds: selectedMathBankQuestionIds.value,
+    title,
+    filename: `${title}-${suffix}.docx`,
+    templateId: bankHandoutForm.value.templateId,
+    mode: bankHandoutForm.value.mode,
+    sectionMode: bankHandoutForm.value.sectionMode,
+  });
+
+  if (result.success) {
+    downloadBlob(result.blob, result.filename || `${title}-${suffix}.docx`);
+    status.value = "success";
+    message.value = `已生成 ${selectedMathBankQuestionIds.value.length} 題講義 Word。`;
+  } else {
+    status.value = "error";
+    message.value = result.error || "題庫講義產生失敗。";
+  }
+
+  bankHandoutGenerating.value = false;
 }
 
 function triggerDownload(content, filename, type) {

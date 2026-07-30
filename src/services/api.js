@@ -554,6 +554,53 @@ export async function generateWordDocument({
   }
 }
 
+export async function generateWordFromBank({
+  questionIds = [],
+  filename = "題庫選題講義.docx",
+  title = "題庫選題講義",
+  templateId = "high_school_math_handout",
+  mode = "teaching",
+  sectionMode = "unit",
+}) {
+  try {
+    const response = await fetch(`${API_URL}/word/generate-from-bank/`, {
+      method: "POST",
+      headers: getAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({
+        question_ids: questionIds,
+        filename,
+        title,
+        template_id: templateId,
+        mode,
+        section_mode: sectionMode,
+      }),
+    });
+
+    if (response.ok) {
+      const blob = await response.blob();
+      return {
+        success: true,
+        blob,
+        filename: getDownloadFilename(response, filename),
+      };
+    }
+
+    const result = await parseJson(response);
+    return {
+      success: false,
+      error: getAuthError(response, result, "題庫講義產生失敗"),
+      code: result.code,
+      status: response.status,
+      data: result,
+    };
+  } catch (error) {
+    console.error("generateWordFromBank failed", error);
+    return { success: false, error: "無法連線至題庫講義產生服務", status: 0 };
+  }
+}
+
 function getDownloadFilename(response, fallback) {
   const disposition = response.headers.get("content-disposition") || "";
   const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
