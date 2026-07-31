@@ -1,0 +1,14 @@
+{
+  "name": "document-processing-local-math-bank",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:up": "docker compose --env-file .env.mysql -f docker-compose.yml up -d",
+    "db:down": "docker compose --env-file .env.mysql -f docker-compose.yml down",
+    "db:seed": "node scripts/import-mysql-seed.mjs",
+    "db:check": "node scripts/check-mysql-seed.mjs"
+  },
+  "dependencies": {
+    "mysql2": "^3.23.2"
+  }
+}
