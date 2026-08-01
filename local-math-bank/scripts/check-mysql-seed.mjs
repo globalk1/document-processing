@@ -1,11 +1,11 @@
 import { createMySqlConnection, tableOrder, quoted } from "./mysql-seed-utils.mjs";
 
 const expected = Object.freeze({
-  questions: 438,
-  concepts: 71,
-  lecture_projects: 1,
-  lecture_project_revisions: 11,
-  lecture_assets: 38,
+  questions: 502,
+  concepts: 72,
+  lecture_projects: 2,
+  lecture_project_revisions: 29,
+  lecture_assets: 66,
 });
 const connection = await createMySqlConnection();
 try {

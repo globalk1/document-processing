@@ -1,5 +1,7 @@
 # Local Math Bank snapshot
 
+Current snapshot: 502 questions, 72 concepts, 2 lecture projects, 29 lecture revisions, and 66 shared lecture assets. It contains the local CH1-1 and CH1-2 Global Handout data needed by the sandbox workflow; it does not replace the parent application's Vue UI or API.
+
 這個目錄是 `YeeHong` 分支的可攜 MySQL 題庫快照。它不會修改 `main`，也不會直接讓 Vue
 前端連線到資料庫；後續應由 localhost API／正式後端使用同一份 schema 與資料契約。
 
