@@ -20,9 +20,15 @@ npm run db:check
 
 ## 快照內容
 
-- 438 題：原創 1-1 的 62 題，加上第一章多來源原型 376 題。
-- 71 個觀念：原創 16 個，加上原型 55 個。
-- 38 個 lecture／題目 asset、1 個講義專案與 11 個 revision。
+- 502 題、72 個觀念。
+- 66 個 shared lecture asset、2 個講義專案與 29 個 revision。
+- 包含 CH1-1／CH1-2 的可重建本機題庫資料、題目—觀念關聯、來源追溯及 image／Python asset variant。
 
-原型資料保留來源追溯、題目—觀念關聯和 image／Python asset variant。此目錄只提供資料庫層；
-`document-processing` 的 Vue UI 要操作它，仍需要下一階段加入相容的 localhost API。
+以 `npm run db:check` 的固定數量檢查作為此分支的快照驗收。此目錄只提供資料庫層；
+`document-processing` 的 Vue UI 要操作它，仍需要相容的 localhost API。
+
+## 與本地題庫沙盒的同步範圍
+
+`YeeHong` 是資料快照下游分支，不是本地題庫沙盒的鏡像。只同步本目錄既有的 seed、seed
+檢查與本 README；不直接同步沙盒的 Vue、mock-server、Word renderer、講義草稿 UI 或其他工具。
+若未來要擴大範圍，須先定義相容 API 與責任邊界。
