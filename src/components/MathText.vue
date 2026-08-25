@@ -98,7 +98,7 @@ async function renderMath() {
   const element = textRef.value;
   if (!element || !isActive) return;
 
-  element.textContent = props.content || props.fallback;
+  element.textContent = normalizeMathSource(props.content || props.fallback);
   ensureKatexReady()
     .then(() => {
       if (
@@ -110,10 +110,10 @@ async function renderMath() {
         return;
       }
 
-      element.textContent = props.content || props.fallback;
+      element.textContent = normalizeMathSource(props.content || props.fallback);
       window.renderMathInElement(element, {
         delimiters: [
-          { left: "$$", right: "$$", display: false },
+          { left: "$$", right: "$$", display: true },
           { left: "\\[", right: "\\]", display: true },
           { left: "\\(", right: "\\)", display: false },
           { left: "$", right: "$", display: false },
@@ -123,5 +123,58 @@ async function renderMath() {
       });
     })
     .catch(() => {});
+}
+
+function normalizeMathSource(value) {
+  const normalized = String(value || "")
+    .replace(/＄/g, "$")
+    .replace(/\\\\\(/g, "\\(")
+    .replace(/\\\\\)/g, "\\)")
+    .replace(/\\\\\[/g, "\\[")
+    .replace(/\\\\\]/g, "\\]");
+  return protectBareLatexSegments(normalized);
+}
+
+function protectBareLatexSegments(value) {
+  const source = String(value || "");
+  const segments = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const delimiter = findNextMathDelimiter(source, index);
+    if (!delimiter) {
+      segments.push(wrapBareLatex(source.slice(index)));
+      break;
+    }
+    if (delimiter.index > index) {
+      segments.push(wrapBareLatex(source.slice(index, delimiter.index)));
+    }
+    const closeIndex = source.indexOf(delimiter.close, delimiter.index + delimiter.open.length);
+    if (closeIndex === -1) {
+      segments.push(source.slice(delimiter.index));
+      break;
+    }
+    segments.push(source.slice(delimiter.index, closeIndex + delimiter.close.length));
+    index = closeIndex + delimiter.close.length;
+  }
+
+  return segments.join("");
+}
+
+function findNextMathDelimiter(source, startIndex) {
+  for (let index = startIndex; index < source.length; index += 1) {
+    if (source[index - 1] === "\\") continue;
+    if (source.startsWith("\\[", index)) return { index, open: "\\[", close: "\\]" };
+    if (source.startsWith("\\(", index)) return { index, open: "\\(", close: "\\)" };
+    if (source.startsWith("$$", index)) return { index, open: "$$", close: "$$" };
+    if (source[index] === "$") return { index, open: "$", close: "$" };
+  }
+  return null;
+}
+
+function wrapBareLatex(value) {
+  const commandPattern =
+    /\\(?:d?frac|tfrac)\{[^{}\n]+\}\{[^{}\n]+\}|\\sqrt(?:\[[^\]\n]+\])?\{[^{}\n]+\}|\\(?:overline|underline|vec|bar|hat)\{[^{}\n]+\}|\\(?:alpha|beta|gamma|delta|theta|lambda|mu|pi|phi|omega|Delta|Omega|angle|triangle|cdots|ldots|times|div|leq|geq|neq|infty|parallel|perp)\b/g;
+  return String(value || "").replace(commandPattern, (match) => `\\(${match}\\)`);
 }
 </script>
