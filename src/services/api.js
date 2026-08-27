@@ -65,6 +65,10 @@ function getAuthError(response, result, fallback) {
   return result.error || result.detail || fallback;
 }
 
+function getApiKeyRequestError(result, fallback) {
+  return result.error || result.detail || fallback;
+}
+
 export async function loginDocumentProcessing({ account, password, stayLoggedIn }) {
   try {
     const response = await fetch(`${API_URL}/document-processing/token/`, {
@@ -177,15 +181,17 @@ function getPublicAssetUrl(key) {
   return `${CDN_BASE_URL}/${encodeURI(key).replace(/%2F/g, "/")}`;
 }
 
-export async function uploadAssetFile({ file, key }) {
+export async function uploadAssetFile({ file, key, apiKey = "" }) {
   const formData = new FormData();
   formData.append("file", file);
   if (key) formData.append("key", key);
+  const headers = {};
+  if (apiKey) headers["X-API-KEY"] = apiKey;
 
   try {
     const response = await fetch(`${API_URL}/assets/upload/`, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: apiKey ? headers : getAuthHeaders(headers),
       body: formData,
     });
     const result = await parseJson(response);
@@ -193,7 +199,9 @@ export async function uploadAssetFile({ file, key }) {
     if (!response.ok || !result.success || !result.key) {
       return {
         success: false,
-        error: getAuthError(response, result, "圖片上傳失敗"),
+        error: apiKey
+          ? getApiKeyRequestError(result, "圖片上傳失敗")
+          : getAuthError(response, result, "圖片上傳失敗"),
         status: response.status,
         data: result,
       };
@@ -211,13 +219,16 @@ export async function uploadAssetFile({ file, key }) {
   }
 }
 
-export async function createAssetFolder(prefix) {
+export async function createAssetFolder(prefix, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
+
   try {
     const response = await fetch(`${API_URL}/assets/folder/`, {
       method: "POST",
-      headers: getAuthHeaders({
-        "Content-Type": "application/json",
-      }),
+      headers: options.apiKey ? headers : getAuthHeaders(headers),
       body: JSON.stringify({ prefix }),
     });
     const result = await parseJson(response);
@@ -225,7 +236,9 @@ export async function createAssetFolder(prefix) {
     if (!response.ok || result.success === false) {
       return {
         success: false,
-        error: getAuthError(response, result, "資料夾建立失敗"),
+        error: options.apiKey
+          ? getApiKeyRequestError(result, "資料夾建立失敗")
+          : getAuthError(response, result, "資料夾建立失敗"),
         status: response.status,
         data: result,
       };

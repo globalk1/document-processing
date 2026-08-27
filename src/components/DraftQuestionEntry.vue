@@ -327,7 +327,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
 import {
-  createAssetFolder,
   createStaffMathBankQuestion,
   deleteStaffMathBankQuestion,
   listMathBankGrades,
@@ -342,7 +341,7 @@ const emit = defineEmits(["copy"]);
 const defaultStaffApiKey =
   import.meta.env.VITE_STAFF_API_KEY ||
   "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
-const goodQuestionFolder = "好題搜集";
+const goodQuestionFolder = "好題蒐集";
 const pageSize = 100;
 const questionTypes = [
   { value: "choice", label: "選擇題" },
@@ -378,7 +377,6 @@ const filters = reactive({
   difficulty: "",
 });
 let filterTimer = null;
-let goodQuestionFolderReady = false;
 
 const filteredUnits = computed(() =>
   form.grade_id
@@ -653,19 +651,12 @@ async function uploadImages(fileList) {
 
   uploadingImages.value = true;
   status.value = "loading";
-  message.value = `正在準備 ${goodQuestionFolder} 資料夾...`;
-
-  const folderReady = await ensureGoodQuestionFolder();
-  if (!folderReady) {
-    uploadingImages.value = false;
-    return;
-  }
+  message.value = `正在上傳 ${files.length} 張圖片...`;
 
   let successCount = 0;
-  message.value = `正在上傳 ${files.length} 張圖片...`;
   for (const file of files) {
     const key = buildGoodQuestionImageKey(file.name);
-    const result = await uploadAssetFile({ file, key });
+    const result = await uploadAssetFile({ file, key, apiKey: defaultStaffApiKey });
     if (!result.success) {
       status.value = "error";
       message.value = result.error || "圖片上傳失敗。";
@@ -747,20 +738,6 @@ function getImageFilesFromClipboard(clipboardData) {
       });
     })
     .filter(Boolean);
-}
-
-async function ensureGoodQuestionFolder() {
-  if (goodQuestionFolderReady) return true;
-
-  const result = await createAssetFolder(goodQuestionFolder);
-  if (!result.success) {
-    status.value = "error";
-    message.value = result.error || `${goodQuestionFolder} 資料夾建立失敗。`;
-    return false;
-  }
-
-  goodQuestionFolderReady = true;
-  return true;
 }
 
 function splitThinking(value) {
