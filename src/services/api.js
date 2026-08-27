@@ -3,6 +3,7 @@ const API_URL =
   (import.meta.env.PROD
     ? "https://sunnytseng.com/api"
     : "http://127.0.0.1:8000/api");
+const CDN_BASE_URL = "https://assets.sunnytseng.com";
 const AUTH_TOKEN_KEY = "auth.token";
 const AUTH_USER_KEY = "auth.documentProcessingUser";
 
@@ -170,6 +171,71 @@ async function postDocumentJson(path, body) {
   }
 
   return { success: true, data: result };
+}
+
+function getPublicAssetUrl(key) {
+  return `${CDN_BASE_URL}/${encodeURI(key).replace(/%2F/g, "/")}`;
+}
+
+export async function uploadAssetFile({ file, key }) {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (key) formData.append("key", key);
+
+  try {
+    const response = await fetch(`${API_URL}/assets/upload/`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: formData,
+    });
+    const result = await parseJson(response);
+
+    if (!response.ok || !result.success || !result.key) {
+      return {
+        success: false,
+        error: getAuthError(response, result, "圖片上傳失敗"),
+        status: response.status,
+        data: result,
+      };
+    }
+
+    return {
+      success: true,
+      key: result.key,
+      url: result.url || getPublicAssetUrl(result.key),
+      data: result,
+    };
+  } catch (error) {
+    console.error("uploadAssetFile failed", error);
+    return { success: false, error: "無法連線至圖片上傳服務", status: 0 };
+  }
+}
+
+export async function createAssetFolder(prefix) {
+  try {
+    const response = await fetch(`${API_URL}/assets/folder/`, {
+      method: "POST",
+      headers: getAuthHeaders({
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({ prefix }),
+    });
+    const result = await parseJson(response);
+
+    if (!response.ok || result.success === false) {
+      return {
+        success: false,
+        error: getAuthError(response, result, "資料夾建立失敗"),
+        status: response.status,
+        data: result,
+      };
+    }
+
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("createAssetFolder failed", error);
+    return { success: false, error: "無法連線至資料夾建立服務", status: 0 };
+  }
 }
 
 async function postMathBankJson(path, body, options = {}) {

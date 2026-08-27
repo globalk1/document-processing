@@ -170,10 +170,6 @@
               </select>
             </label>
           </div>
-
-          <div class="fixed-meta-line">
-            <span>員工題目只能存成草稿</span>
-          </div>
         </section>
 
         <section class="word-workflow-section">
@@ -193,6 +189,57 @@
               placeholder="輸入題目內容。選擇題可直接寫成：(A) ... (B) ..."
             ></textarea>
           </label>
+
+          <section
+            class="question-image-upload"
+            :class="{ dragging: imageDragOver }"
+            @dragenter.prevent="imageDragOver = true"
+            @dragover.prevent="imageDragOver = true"
+            @dragleave.prevent="imageDragOver = false"
+            @drop.prevent="handleImageDrop"
+          >
+            <input
+              ref="imageInputRef"
+              class="visually-hidden"
+              type="file"
+              accept="image/*"
+              multiple
+              @change="handleImagePicker"
+            />
+            <div>
+              <strong>題目圖片</strong>
+              <span>選擇、拖曳或 Ctrl / Command + V 貼上圖片。</span>
+            </div>
+            <button
+              class="secondary-button compact"
+              :disabled="uploadingImages"
+              type="button"
+              @click="openImagePicker"
+            >
+              {{ uploadingImages ? "上傳中" : "選擇圖片" }}
+            </button>
+          </section>
+
+          <div v-if="imageAssets.length" class="question-image-grid">
+            <article
+              v-for="asset in imageAssets"
+              :key="asset.storage_key || asset.url"
+              class="question-image-card"
+            >
+              <img :src="asset.url" :alt="asset.alt_text || '題目圖片'" />
+              <div>
+                <strong>{{ asset.alt_text || "題目圖片" }}</strong>
+                <span>{{ asset.storage_key }}</span>
+              </div>
+              <button
+                class="ghost-button compact danger"
+                type="button"
+                @click="removeAsset(asset.storage_key || asset.url)"
+              >
+                移除
+              </button>
+            </article>
+          </div>
 
           <div class="filter-grid two">
             <label class="field-label">
@@ -253,6 +300,14 @@
           <section class="question-editor-preview-block prompt">
             <strong>題目</strong>
             <p><MathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
+            <div v-if="imageAssets.length" class="preview-image-strip">
+              <img
+                v-for="asset in imageAssets"
+                :key="`preview-${asset.storage_key || asset.url}`"
+                :src="asset.url"
+                :alt="asset.alt_text || '題目圖片'"
+              />
+            </div>
           </section>
           <section class="question-editor-preview-block answer">
             <strong>答案</strong>
@@ -272,11 +327,13 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
 import {
+  createAssetFolder,
   createStaffMathBankQuestion,
   deleteStaffMathBankQuestion,
   listMathBankGrades,
   listMathBankUnits,
   searchStaffMathBankQuestions,
+  uploadAssetFile,
   updateStaffMathBankQuestion,
 } from "../services/api";
 
@@ -285,6 +342,7 @@ const emit = defineEmits(["copy"]);
 const defaultStaffApiKey =
   import.meta.env.VITE_STAFF_API_KEY ||
   "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
+const goodQuestionFolder = "好題搜集";
 const pageSize = 100;
 const questionTypes = [
   { value: "choice", label: "選擇題" },
@@ -309,6 +367,9 @@ const saving = ref(false);
 const status = ref("idle");
 const message = ref("");
 const allowDuplicate = ref(false);
+const uploadingImages = ref(false);
+const imageDragOver = ref(false);
+const imageInputRef = ref(null);
 const form = reactive(createEmptyForm());
 const filters = reactive({
   search: "",
@@ -317,6 +378,7 @@ const filters = reactive({
   difficulty: "",
 });
 let filterTimer = null;
+let goodQuestionFolderReady = false;
 
 const filteredUnits = computed(() =>
   form.grade_id
@@ -328,14 +390,17 @@ const filteredFilterUnits = computed(() =>
     ? units.value.filter((unit) => getUnitGradeId(unit) === filters.grade_id)
     : units.value,
 );
+const imageAssets = computed(() => form.assets.filter(hasAssetContent));
 
 onMounted(async () => {
+  window.addEventListener("paste", handlePaste);
   await loadTaxonomy();
   await loadDrafts();
 });
 
 onBeforeUnmount(() => {
   if (filterTimer) window.clearTimeout(filterTimer);
+  window.removeEventListener("paste", handlePaste);
 });
 
 async function loadTaxonomy() {
@@ -456,7 +521,7 @@ function selectDraft(question) {
     answer_md: question.answer_md || "",
     solution_md: question.solution_md || "",
     thinking: formatThinking(question.thinking),
-    assets: Array.isArray(question.assets) ? question.assets : [],
+    assets: Array.isArray(question.assets) ? question.assets.map(normalizeAsset) : [],
   });
   status.value = "idle";
   message.value = "";
@@ -474,7 +539,7 @@ function buildPayload() {
     thinking: splitThinking(form.thinking),
     status: "draft",
     visibility: "public",
-    assets: form.assets,
+    assets: form.assets.map(normalizeAsset),
   };
 
   if (allowDuplicate.value) payload.duplicate_policy = "allow";
@@ -484,7 +549,9 @@ function buildPayload() {
 function validateForm() {
   if (!form.grade_id) return "請選擇年級。";
   if (!form.unit_id) return "請選擇單元。";
-  if (!form.prompt_md.trim()) return "請輸入題目內容。";
+  if (!form.prompt_md.trim() && !form.assets.some(hasAssetContent)) {
+    return "請輸入題目內容或上傳題目圖片。";
+  }
   return "";
 }
 
@@ -553,6 +620,147 @@ async function deleteQuestion() {
 
 function copyPayload() {
   emit("copy", JSON.stringify(buildPayload(), null, 2));
+}
+
+function openImagePicker() {
+  imageInputRef.value?.click();
+}
+
+function handleImagePicker(event) {
+  uploadImages(event.target.files);
+  event.target.value = "";
+}
+
+function handleImageDrop(event) {
+  imageDragOver.value = false;
+  uploadImages(event.dataTransfer?.files);
+}
+
+function handlePaste(event) {
+  const files = getImageFilesFromClipboard(event.clipboardData);
+  if (!files.length) return;
+  event.preventDefault();
+  uploadImages(files);
+}
+
+async function uploadImages(fileList) {
+  const files = Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
+  if (!files.length) {
+    status.value = "error";
+    message.value = "請選擇圖片檔。";
+    return;
+  }
+
+  uploadingImages.value = true;
+  status.value = "loading";
+  message.value = `正在準備 ${goodQuestionFolder} 資料夾...`;
+
+  const folderReady = await ensureGoodQuestionFolder();
+  if (!folderReady) {
+    uploadingImages.value = false;
+    return;
+  }
+
+  let successCount = 0;
+  message.value = `正在上傳 ${files.length} 張圖片...`;
+  for (const file of files) {
+    const key = buildGoodQuestionImageKey(file.name);
+    const result = await uploadAssetFile({ file, key });
+    if (!result.success) {
+      status.value = "error";
+      message.value = result.error || "圖片上傳失敗。";
+      uploadingImages.value = false;
+      return;
+    }
+
+    form.assets.push(
+      normalizeAsset({
+        role: "prompt",
+        url: result.url,
+        storage_key: result.key,
+        alt_text: stripExtension(file.name) || "題目圖片",
+        mime_type: file.type || "image/png",
+        sort_order: form.assets.length,
+      }),
+    );
+    successCount += 1;
+  }
+
+  uploadingImages.value = false;
+  status.value = "success";
+  message.value = `已上傳 ${successCount} 張圖片，記得儲存草稿。`;
+}
+
+function removeAsset(assetKey) {
+  form.assets = form.assets.filter(
+    (asset) => (asset.storage_key || asset.url) !== assetKey,
+  );
+}
+
+function normalizeAsset(asset = {}) {
+  return {
+    role: asset.role || "prompt",
+    url: asset.url || "",
+    storage_key: asset.storage_key || "",
+    alt_text: asset.alt_text || "",
+    mime_type: asset.mime_type || "",
+    source_language: asset.source_language || "",
+    source_code: asset.source_code || "",
+    marking_guide: asset.marking_guide || "",
+    sort_order: Number(asset.sort_order) || 0,
+  };
+}
+
+function hasAssetContent(asset) {
+  return Boolean(
+    asset?.role === "prompt" &&
+      (String(asset.url || "").trim() ||
+        String(asset.storage_key || "").trim() ||
+        String(asset.source_code || "").trim()),
+  );
+}
+
+function buildGoodQuestionImageKey(filename) {
+  const cleanName = String(filename || "image.png")
+    .trim()
+    .replace(/^\/+/, "")
+    .replace(/[\\/:*?"<>|#%{}[\]^~`]/g, "-")
+    .replace(/\s+/g, "-");
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${goodQuestionFolder}/${suffix}-${cleanName || "image.png"}`;
+}
+
+function stripExtension(filename) {
+  return String(filename || "").replace(/\.[^.]+$/, "");
+}
+
+function getImageFilesFromClipboard(clipboardData) {
+  return Array.from(clipboardData?.items || [])
+    .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+    .map((item, index) => {
+      const file = item.getAsFile();
+      if (!file) return null;
+      if (file.name) return file;
+      const extension = (file.type.split("/")[1] || "png").replace("jpeg", "jpg");
+      return new File([file], `pasted-image-${Date.now()}-${index}.${extension}`, {
+        type: file.type,
+      });
+    })
+    .filter(Boolean);
+}
+
+async function ensureGoodQuestionFolder() {
+  if (goodQuestionFolderReady) return true;
+
+  const result = await createAssetFolder(goodQuestionFolder);
+  if (!result.success) {
+    status.value = "error";
+    message.value = result.error || `${goodQuestionFolder} 資料夾建立失敗。`;
+    return false;
+  }
+
+  goodQuestionFolderReady = true;
+  return true;
 }
 
 function splitThinking(value) {
