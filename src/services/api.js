@@ -61,12 +61,17 @@ async function parseJson(response) {
 
 function getAuthError(response, result, fallback) {
   if (response.status === 401 || response.status === 403)
-    return "請先登入，或重新登入後再操作。";
+    return result.error || result.detail || "權限驗證失敗，請確認操作權限。";
   return result.error || result.detail || fallback;
 }
 
 function getApiKeyRequestError(result, fallback) {
   return result.error || result.detail || fallback;
+}
+
+function getMathBankRequestError(response, result, fallback, options = {}) {
+  if (options.apiKey) return getApiKeyRequestError(result, fallback);
+  return getAuthError(response, result, fallback);
 }
 
 export async function loginDocumentProcessing({ account, password, stayLoggedIn }) {
@@ -145,7 +150,7 @@ async function fetchMathBankJson(path, params = {}, options = {}) {
   if (!response.ok) {
     return {
       success: false,
-      error: getAuthError(response, result, "題庫讀取失敗"),
+      error: getMathBankRequestError(response, result, "題庫讀取失敗", options),
       status: response.status,
       data: result,
     };
@@ -219,38 +224,6 @@ export async function uploadAssetFile({ file, key, apiKey = "" }) {
   }
 }
 
-export async function createAssetFolder(prefix, options = {}) {
-  const headers = {
-    "Content-Type": "application/json",
-  };
-  if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
-
-  try {
-    const response = await fetch(`${API_URL}/assets/folder/`, {
-      method: "POST",
-      headers: options.apiKey ? headers : getAuthHeaders(headers),
-      body: JSON.stringify({ prefix }),
-    });
-    const result = await parseJson(response);
-
-    if (!response.ok || result.success === false) {
-      return {
-        success: false,
-        error: options.apiKey
-          ? getApiKeyRequestError(result, "資料夾建立失敗")
-          : getAuthError(response, result, "資料夾建立失敗"),
-        status: response.status,
-        data: result,
-      };
-    }
-
-    return { success: true, data: result };
-  } catch (error) {
-    console.error("createAssetFolder failed", error);
-    return { success: false, error: "無法連線至資料夾建立服務", status: 0 };
-  }
-}
-
 async function postMathBankJson(path, body, options = {}) {
   const headers = {
     "Content-Type": "application/json",
@@ -267,7 +240,7 @@ async function postMathBankJson(path, body, options = {}) {
   if (!response.ok) {
     return {
       success: false,
-      error: getAuthError(response, result, "題庫寫入失敗"),
+      error: getMathBankRequestError(response, result, "題庫寫入失敗", options),
       status: response.status,
       data: result,
     };
@@ -292,7 +265,7 @@ async function sendMathBankJson(path, body, options = {}) {
   if (!response.ok) {
     return {
       success: false,
-      error: getAuthError(response, result, "題庫寫入失敗"),
+      error: getMathBankRequestError(response, result, "題庫寫入失敗", options),
       status: response.status,
       data: result,
     };
@@ -316,7 +289,7 @@ async function deleteMathBankJson(path, options = {}) {
   if (!response.ok) {
     return {
       success: false,
-      error: getAuthError(response, result, "題庫刪除失敗"),
+      error: getMathBankRequestError(response, result, "題庫刪除失敗", options),
       status: response.status,
       data: result,
     };
