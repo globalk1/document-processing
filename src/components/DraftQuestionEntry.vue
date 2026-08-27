@@ -212,17 +212,17 @@
             </div>
             <button
               class="secondary-button compact"
-              :disabled="uploadingImages"
+              :disabled="saving"
               type="button"
               @click="openImagePicker"
             >
-              {{ uploadingImages ? "上傳中" : "選擇圖片" }}
+              選擇圖片
             </button>
           </section>
 
-          <div v-if="imageAssets.length" class="question-image-grid">
+          <div v-if="previewImageAssets.length" class="question-image-grid">
             <article
-              v-for="asset in imageAssets"
+              v-for="asset in previewImageAssets"
               :key="asset.storage_key || asset.url"
               class="question-image-card"
             >
@@ -300,9 +300,9 @@
           <section class="question-editor-preview-block prompt">
             <strong>題目</strong>
             <p><MathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
-            <div v-if="imageAssets.length" class="preview-image-strip">
+            <div v-if="previewImageAssets.length" class="preview-image-strip">
               <img
-                v-for="asset in imageAssets"
+                v-for="asset in previewImageAssets"
                 :key="`preview-${asset.storage_key || asset.url}`"
                 :src="asset.url"
                 :alt="asset.alt_text || '題目圖片'"
@@ -369,6 +369,7 @@ const allowDuplicate = ref(false);
 const uploadingImages = ref(false);
 const imageDragOver = ref(false);
 const imageInputRef = ref(null);
+const pendingImages = ref([]);
 const form = reactive(createEmptyForm());
 const filters = reactive({
   search: "",
@@ -389,6 +390,19 @@ const filteredFilterUnits = computed(() =>
     : units.value,
 );
 const imageAssets = computed(() => form.assets.filter(hasAssetContent));
+const previewImageAssets = computed(() => [
+  ...imageAssets.value,
+  ...pendingImages.value.map((item) =>
+    normalizeAsset({
+      role: "prompt",
+      url: item.previewUrl,
+      storage_key: item.id,
+      alt_text: item.alt_text,
+      mime_type: item.mime_type,
+      sort_order: form.assets.length + item.sort_order,
+    }),
+  ),
+]);
 
 onMounted(async () => {
   window.addEventListener("paste", handlePaste);
@@ -399,6 +413,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (filterTimer) window.clearTimeout(filterTimer);
   window.removeEventListener("paste", handlePaste);
+  clearPendingImages();
 });
 
 async function loadTaxonomy() {
@@ -496,6 +511,7 @@ function createEmptyForm() {
 function startCreate() {
   selectedId.value = "";
   allowDuplicate.value = false;
+  clearPendingImages();
   Object.assign(form, createEmptyForm());
   status.value = "idle";
   message.value = "";
@@ -510,6 +526,7 @@ function selectDraft(question) {
 
   selectedId.value = question.id || "";
   allowDuplicate.value = false;
+  clearPendingImages();
   Object.assign(form, {
     grade_id: stringifyValue(question.grade?.id || question.grade_id),
     unit_id: stringifyValue(question.unit?.id || question.unit_id),
@@ -547,7 +564,11 @@ function buildPayload() {
 function validateForm() {
   if (!form.grade_id) return "請選擇年級。";
   if (!form.unit_id) return "請選擇單元。";
-  if (!form.prompt_md.trim() && !form.assets.some(hasAssetContent)) {
+  if (
+    !form.prompt_md.trim() &&
+    !form.assets.some(hasAssetContent) &&
+    !pendingImages.value.length
+  ) {
     return "請輸入題目內容或上傳題目圖片。";
   }
   return "";
@@ -563,8 +584,13 @@ async function saveQuestion() {
 
   saving.value = true;
   status.value = "loading";
-  message.value = selectedId.value ? "正在儲存草稿..." : "正在新增草稿...";
   const wasEditing = Boolean(selectedId.value);
+  const uploadedImages = await uploadPendingImagesBeforeSave();
+  if (uploadedImages === null) {
+    saving.value = false;
+    return;
+  }
+  message.value = selectedId.value ? "正在儲存草稿..." : "正在新增草稿...";
 
   const result = selectedId.value
     ? await updateStaffMathBankQuestion(selectedId.value, buildPayload(), {
@@ -625,23 +651,23 @@ function openImagePicker() {
 }
 
 function handleImagePicker(event) {
-  uploadImages(event.target.files);
+  queueImages(event.target.files);
   event.target.value = "";
 }
 
 function handleImageDrop(event) {
   imageDragOver.value = false;
-  uploadImages(event.dataTransfer?.files);
+  queueImages(event.dataTransfer?.files);
 }
 
 function handlePaste(event) {
   const files = getImageFilesFromClipboard(event.clipboardData);
   if (!files.length) return;
   event.preventDefault();
-  uploadImages(files);
+  queueImages(files);
 }
 
-async function uploadImages(fileList) {
+function queueImages(fileList) {
   const files = Array.from(fileList || []).filter((file) => file.type.startsWith("image/"));
   if (!files.length) {
     status.value = "error";
@@ -649,43 +675,73 @@ async function uploadImages(fileList) {
     return;
   }
 
-  uploadingImages.value = true;
-  status.value = "loading";
-  message.value = `正在上傳 ${files.length} 張圖片...`;
+  const nextImages = files.map((file, index) => ({
+    id: `pending-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl: URL.createObjectURL(file),
+    alt_text: stripExtension(file.name) || "題目圖片",
+    mime_type: file.type || "image/png",
+    sort_order: pendingImages.value.length + index,
+  }));
+  pendingImages.value = [...pendingImages.value, ...nextImages];
+  status.value = "success";
+  message.value = `已加入 ${files.length} 張圖片，儲存草稿時會一起上傳。`;
+}
 
-  let successCount = 0;
-  for (const file of files) {
-    const key = buildGoodQuestionImageKey(file.name);
-    const result = await uploadAssetFile({ file, key, apiKey: defaultStaffApiKey });
+async function uploadPendingImagesBeforeSave() {
+  if (!pendingImages.value.length) return [];
+
+  uploadingImages.value = true;
+  message.value = `正在上傳 ${pendingImages.value.length} 張圖片...`;
+  const uploadedAssets = [];
+
+  for (const item of pendingImages.value) {
+    const key = buildGoodQuestionImageKey(item.file.name);
+    const result = await uploadAssetFile({
+      file: item.file,
+      key,
+      apiKey: defaultStaffApiKey,
+    });
     if (!result.success) {
       status.value = "error";
       message.value = result.error || "圖片上傳失敗。";
       uploadingImages.value = false;
-      return;
+      return null;
     }
 
-    form.assets.push(
+    uploadedAssets.push(
       normalizeAsset({
         role: "prompt",
         url: result.url,
         storage_key: result.key,
-        alt_text: stripExtension(file.name) || "題目圖片",
-        mime_type: file.type || "image/png",
-        sort_order: form.assets.length,
+        alt_text: item.alt_text,
+        mime_type: item.mime_type,
+        sort_order: form.assets.length + uploadedAssets.length,
       }),
     );
-    successCount += 1;
   }
 
+  form.assets.push(...uploadedAssets);
+  clearPendingImages();
   uploadingImages.value = false;
-  status.value = "success";
-  message.value = `已上傳 ${successCount} 張圖片，記得儲存草稿。`;
+  return uploadedAssets;
 }
 
 function removeAsset(assetKey) {
+  const pendingImage = pendingImages.value.find((item) => item.id === assetKey);
+  if (pendingImage) {
+    URL.revokeObjectURL(pendingImage.previewUrl);
+    pendingImages.value = pendingImages.value.filter((item) => item.id !== assetKey);
+    return;
+  }
   form.assets = form.assets.filter(
     (asset) => (asset.storage_key || asset.url) !== assetKey,
   );
+}
+
+function clearPendingImages() {
+  pendingImages.value.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+  pendingImages.value = [];
 }
 
 function normalizeAsset(asset = {}) {
