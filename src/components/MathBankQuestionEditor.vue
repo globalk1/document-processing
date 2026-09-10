@@ -349,6 +349,16 @@
                 </label>
               </div>
 
+              <label class="field-label">
+                題目來源
+                <input
+                  v-model="questionForm.question_source"
+                  class="text-input"
+                  type="text"
+                  placeholder="可空白"
+                />
+              </label>
+
               <div class="fixed-meta-line">
                 <span>儲存狀態：草稿</span>
                 <span>員工題庫</span>
@@ -1048,6 +1058,7 @@ function applyQuestionToForm(question) {
     unit_id: question.unit?.id || question.unit_id || "",
     type: question.type || "calculation",
     difficulty: question.difficulty || "A",
+    question_source: normalizeQuestionSource(question.question_source),
     prompt_md: question.prompt_md || "",
     answer_md: question.answer_md || "",
     solution_md: question.solution_md || "",
@@ -1067,6 +1078,7 @@ function createEmptyQuestionForm() {
     unit_id: "",
     type: "calculation",
     difficulty: "A",
+    question_source: "",
     prompt_md: "",
     answer_md: "",
     solution_md: "",
@@ -1100,6 +1112,7 @@ function buildPayload() {
     unit_id: questionForm.unit_id,
     type: questionForm.type,
     difficulty: questionForm.difficulty,
+    question_source: normalizeQuestionSource(questionForm.question_source),
     prompt_md: questionForm.prompt_md,
     answer_md: questionForm.answer_md,
     solution_md: questionForm.solution_md,
@@ -1336,6 +1349,9 @@ function normalizeQuestionJsonPayload(questionJson = {}) {
     unit_id: stringifyFormValue(firstDefined(questionJson.unit_id, questionJson.unit?.id)),
     type: stringifyFormValue(firstDefined(questionJson.type, "calculation")) || "calculation",
     difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, "A")) || "A",
+    question_source: normalizeQuestionSource(
+      firstDefined(questionJson.question_source, questionJson.source, questionJson.questionSource),
+    ),
     prompt_md: stringifyFormValue(firstDefined(questionJson.prompt_md, questionJson.prompt)),
     answer_md: stringifyFormValue(firstDefined(questionJson.answer_md, questionJson.answer)),
     solution_md: stringifyFormValue(firstDefined(questionJson.solution_md, questionJson.solution)),
@@ -1395,6 +1411,14 @@ function applyQuestionJsonToForm(questionJson) {
     ),
     type: stringifyFormValue(firstDefined(questionJson.type, questionForm.type)) || "calculation",
     difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, questionForm.difficulty)) || "A",
+    question_source: normalizeQuestionSource(
+      firstDefined(
+        questionJson.question_source,
+        questionJson.source,
+        questionJson.questionSource,
+        questionForm.question_source,
+      ),
+    ),
     prompt_md: stringifyFormValue(
       firstDefined(questionJson.prompt_md, questionJson.prompt, questionForm.prompt_md),
     ),
@@ -1421,6 +1445,10 @@ function firstDefined(...values) {
 function stringifyFormValue(value) {
   if (value === undefined || value === null) return "";
   return String(value);
+}
+
+function normalizeQuestionSource(value) {
+  return String(value || "").trim();
 }
 
 function hasOwn(value, key) {

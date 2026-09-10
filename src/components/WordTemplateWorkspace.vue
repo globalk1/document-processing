@@ -265,6 +265,17 @@
               </label>
             </div>
 
+            <label class="field-label">
+              題目來源
+              <input
+                class="text-input"
+                type="text"
+                :value="questionSource(question)"
+                placeholder="可空白"
+                @input="setQuestionMathBank(question, { question_source: $event.target.value })"
+              />
+            </label>
+
             <div class="fixed-meta-line">
               <span>入庫狀態：草稿</span>
               <span>員工題庫</span>
@@ -806,6 +817,10 @@ function questionUnitId(question) {
   return String(question.math_bank?.unit_id || "");
 }
 
+function questionSource(question) {
+  return normalizeQuestionSource(question.math_bank?.question_source);
+}
+
 function filteredQuestionUnits(question) {
   const gradeId = effectiveQuestionGradeId(question);
   if (!gradeId || gradeId === NEW_GRADE_VALUE) return [];
@@ -914,6 +929,7 @@ function createEmptyQuestion(number) {
     math_bank: {
       type: "calculation",
       difficulty: "A",
+      question_source: "",
       status: "draft",
       visibility: "public",
     },
@@ -938,6 +954,14 @@ function normalizeDocument(document) {
         asset_ids: question.asset_ids || [],
         math_bank: {
           ...(question.math_bank || {}),
+          question_source: normalizeQuestionSource(
+            firstDefined(
+              question.math_bank?.question_source,
+              question.question_source,
+              question.source,
+              question.questionSource,
+            ),
+          ),
           status: "draft",
           visibility: "public",
         },
@@ -984,6 +1008,9 @@ function buildMathBankPayload(document, overrides = {}) {
         unit_id: metadata.unit_id || overrides.unit_id || "",
         type: overrides.type || metadata.type || inferQuestionType(question),
         difficulty: overrides.difficulty || metadata.difficulty || "A",
+        question_source: normalizeQuestionSource(
+          firstDefined(metadata.question_source, metadata.source, metadata.questionSource),
+        ),
         prompt_md: buildQuestionPrompt(question),
         answer_md: question.answer || metadata.answer_md || "",
         solution_md: Array.isArray(question.solution)
@@ -1014,6 +1041,14 @@ function inferQuestionType(question) {
 
 function getRecordId(record) {
   return String(record?.id || record?.uuid || record?.pk || "");
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null);
+}
+
+function normalizeQuestionSource(value) {
+  return String(value || "").trim();
 }
 
 function getUnitGradeId(unit) {

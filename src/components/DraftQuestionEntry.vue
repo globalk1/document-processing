@@ -170,6 +170,16 @@
               </select>
             </label>
           </div>
+
+          <label class="field-label">
+            題目來源
+            <input
+              v-model="form.question_source"
+              class="text-input"
+              type="text"
+              placeholder="可空白"
+            />
+          </label>
         </section>
 
         <section class="word-workflow-section">
@@ -500,6 +510,7 @@ function createEmptyForm() {
     unit_id: "",
     type: "calculation",
     difficulty: "A",
+    question_source: "",
     prompt_md: "",
     answer_md: "",
     solution_md: "",
@@ -532,6 +543,7 @@ function selectDraft(question) {
     unit_id: stringifyValue(question.unit?.id || question.unit_id),
     type: question.type || "calculation",
     difficulty: question.difficulty || "A",
+    question_source: normalizeQuestionSource(question.question_source),
     prompt_md: question.prompt_md || "",
     answer_md: question.answer_md || "",
     solution_md: question.solution_md || "",
@@ -548,6 +560,7 @@ function buildPayload() {
     unit_id: form.unit_id,
     type: form.type,
     difficulty: form.difficulty,
+    question_source: normalizeQuestionSource(form.question_source),
     prompt_md: form.prompt_md.trim(),
     answer_md: form.answer_md.trim(),
     solution_md: form.solution_md.trim(),
@@ -559,6 +572,10 @@ function buildPayload() {
 
   if (allowDuplicate.value) payload.duplicate_policy = "allow";
   return payload;
+}
+
+function normalizeQuestionSource(value) {
+  return String(value || "").trim();
 }
 
 function validateForm() {

@@ -349,6 +349,7 @@ export async function buildMathBankJson({
   text,
   gradeId,
   unitId,
+  questionSource = "",
   defaultType = "calculation",
   defaultDifficulty = "A",
 }) {
@@ -356,6 +357,7 @@ export async function buildMathBankJson({
     text,
     grade_id: gradeId,
     unit_id: unitId,
+    question_source: questionSource,
     default_type: defaultType,
     default_difficulty: defaultDifficulty,
   });

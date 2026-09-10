@@ -1784,11 +1784,36 @@ h1 {
   box-shadow: 0 0 0 2px #222 inset;
 }
 
+.question-picker-card.active {
+  border-color: #1f6b34;
+  box-shadow: 0 0 0 2px #1f6b34 inset;
+}
+
 .question-editor-result-card header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.question-picker-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid #c8dfcf;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #f3fbf5;
+  color: #1f6b34;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.question-picker-check input {
+  margin: 0;
+  accent-color: #1f6b34;
 }
 
 .editor-card-actions {
