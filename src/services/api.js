@@ -351,7 +351,7 @@ export async function buildMathBankJson({
   unitId,
   questionSource = "",
   defaultType = "calculation",
-  defaultDifficulty = "A",
+  defaultDifficulty = "C",
 }) {
   const result = await postDocumentJson("/pdf/math-bank-json/", {
     text,

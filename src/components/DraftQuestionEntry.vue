@@ -88,7 +88,7 @@
           <strong class="draft-list-preview">
             <MathText :content="question.prompt_md" fallback="無題目" />
           </strong>
-          <small>{{ question.difficulty || "A" }} · 草稿</small>
+          <small>{{ formatQuestionDifficulty(question.difficulty) }} · 草稿</small>
         </button>
       </div>
 
@@ -361,11 +361,16 @@ const questionTypes = [
   { value: "application", label: "應用題" },
 ];
 const questionDifficulties = [
-  { value: "A", label: "A 基礎型" },
+  { value: "A", label: "A 挑戰型" },
   { value: "B", label: "B 進階型" },
-  { value: "C", label: "C 挑戰型" },
+  { value: "C", label: "C 基礎型" },
   { value: "S", label: "S 究極型" },
 ];
+
+function formatQuestionDifficulty(difficulty) {
+  const value = difficulty || "C";
+  return questionDifficulties.find((item) => item.value === value)?.label || value;
+}
 
 const grades = ref([]);
 const units = ref([]);
@@ -509,7 +514,7 @@ function createEmptyForm() {
     grade_id: "",
     unit_id: "",
     type: "calculation",
-    difficulty: "A",
+    difficulty: "C",
     question_source: "",
     prompt_md: "",
     answer_md: "",
@@ -542,7 +547,7 @@ function selectDraft(question) {
     grade_id: stringifyValue(question.grade?.id || question.grade_id),
     unit_id: stringifyValue(question.unit?.id || question.unit_id),
     type: question.type || "calculation",
-    difficulty: question.difficulty || "A",
+    difficulty: question.difficulty || "C",
     question_source: normalizeQuestionSource(question.question_source),
     prompt_md: question.prompt_md || "",
     answer_md: question.answer_md || "",

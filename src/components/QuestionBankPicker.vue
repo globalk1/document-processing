@@ -116,7 +116,7 @@
             <div class="question-bank-meta">
               <span>{{ question.grade?.name || "-" }}</span>
               <span>{{ question.unit?.name || "-" }}</span>
-              <span>{{ question.difficulty || "-" }}</span>
+              <span>{{ formatQuestionDifficulty(question.difficulty) }}</span>
               <span v-if="question.question_source">來源：{{ question.question_source }}</span>
             </div>
             <label class="question-picker-check">
@@ -176,11 +176,15 @@ const defaultStaffApiKey =
   "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 const pageSize = 50;
 const questionDifficulties = [
-  { value: "A", label: "A 基礎型" },
+  { value: "A", label: "A 挑戰型" },
   { value: "B", label: "B 進階型" },
-  { value: "C", label: "C 挑戰型" },
+  { value: "C", label: "C 基礎型" },
   { value: "S", label: "S 究極型" },
 ];
+
+function formatQuestionDifficulty(difficulty) {
+  return questionDifficulties.find((item) => item.value === difficulty)?.label || difficulty || "-";
+}
 
 const grades = ref([]);
 const units = ref([]);
