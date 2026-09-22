@@ -10,6 +10,13 @@
       </div>
     </header>
 
+    <nav v-if="activePage !== 'pdf'" class="subject-switcher" aria-label="題庫科目">
+      <button v-for="[id, label] in subjects" :key="id" type="button"
+        :aria-pressed="subject === id" @click="subject = id">
+        <strong>{{ label }}</strong><small>{{ label }}題庫</small>
+      </button>
+    </nav>
+
     <nav class="tab-bar" aria-label="功能切換">
       <button
         class="tab-button"
@@ -43,9 +50,11 @@
       </button>
     </nav>
 
-    <DraftQuestionEntry v-if="activePage === 'entry'" @copy="copyText" />
-    <QuestionBankPicker v-else-if="activePage === 'picker'" />
-    <PdfEditorWorkspace v-else />
+    <KeepAlive>
+      <component v-if="activePage !== 'pdf'" :is="activePage === 'entry' ? DraftQuestionEntry : QuestionBankPicker"
+        :key="`${subject}-${activePage}`" :subject="subject" @copy="copyText" />
+    </KeepAlive>
+    <PdfEditorWorkspace v-if="activePage === 'pdf'" />
     <div v-if="copyMessage" class="copy-toast">{{ copyMessage }}</div>
   </main>
 </template>
@@ -57,6 +66,8 @@ import QuestionBankPicker from "./components/QuestionBankPicker.vue";
 
 const PdfEditorWorkspace = defineAsyncComponent(() => import("./components/PdfEditorWorkspace.vue"));
 
+const subjects = [["math", "數學"], ["chinese", "國文"], ["english", "英文"], ["physics", "物理"], ["chemistry", "化學"], ["biology", "生物"], ["earth_science", "地科"]];
+const subject = ref("math");
 const activePage = ref("entry");
 const copyMessage = ref("");
 let copyTimer = null;
@@ -90,3 +101,12 @@ async function copyText(value) {
   }, 1600);
 }
 </script>
+
+<style scoped>
+.subject-switcher { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; margin: 20px 0; }
+.subject-switcher button { display: grid; gap: 6px; min-height: 82px; padding: 14px; border: 2px solid #dbe4ed; border-radius: 16px; background: white; color: #334155; cursor: pointer; }
+.subject-switcher strong { font-size: 22px; }
+.subject-switcher small { font-size: 12px; opacity: .75; }
+.subject-switcher button[aria-pressed="true"] { background: #153f67; color: white; border-color: #153f67; }
+.subject-switcher button:focus-visible { outline: 3px solid #e6ab4b; outline-offset: 3px; }
+</style>

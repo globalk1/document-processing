@@ -334,7 +334,8 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+const props = defineProps({ subject: { type: String, default: "math" } });
+import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
 import {
   createStaffMathBankQuestion,
@@ -359,6 +360,8 @@ const questionTypes = [
   { value: "calculation", label: "計算題" },
   { value: "proof", label: "證明題" },
   { value: "application", label: "應用題" },
+  { value: "short_answer", label: "簡答題" },
+  { value: "essay", label: "申論題" },
 ];
 const questionDifficulties = [
   { value: "A", label: "A 挑戰型" },
@@ -419,8 +422,10 @@ const previewImageAssets = computed(() => [
   ),
 ]);
 
+onActivated(() => window.addEventListener("paste", handlePaste));
+onDeactivated(() => window.removeEventListener("paste", handlePaste));
+
 onMounted(async () => {
-  window.addEventListener("paste", handlePaste);
   await loadTaxonomy();
   await loadDrafts();
 });
@@ -433,8 +438,8 @@ onBeforeUnmount(() => {
 
 async function loadTaxonomy() {
   const [gradeResult, unitResult] = await Promise.all([
-    listMathBankGrades({}, { apiKey: defaultStaffApiKey }),
-    listMathBankUnits({}, { apiKey: defaultStaffApiKey }),
+    listMathBankGrades({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
+    listMathBankUnits({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
   ]);
 
   if (gradeResult.success) grades.value = gradeResult.data || [];
@@ -467,7 +472,7 @@ async function loadDrafts() {
         limit: pageSize,
         cursor,
       },
-      { apiKey: defaultStaffApiKey },
+      { subject: props.subject, apiKey: defaultStaffApiKey },
     );
 
     if (!result.success) {
@@ -616,9 +621,9 @@ async function saveQuestion() {
 
   const result = selectedId.value
     ? await updateStaffMathBankQuestion(selectedId.value, buildPayload(), {
-        apiKey: defaultStaffApiKey,
+        subject: props.subject, apiKey: defaultStaffApiKey,
       })
-    : await createStaffMathBankQuestion(buildPayload(), { apiKey: defaultStaffApiKey });
+    : await createStaffMathBankQuestion(buildPayload(), { subject: props.subject, apiKey: defaultStaffApiKey });
   saving.value = false;
 
   if (!result.success) {
@@ -648,7 +653,7 @@ async function deleteQuestion() {
   message.value = "正在刪除草稿...";
 
   const result = await deleteStaffMathBankQuestion(selectedId.value, {
-    apiKey: defaultStaffApiKey,
+    subject: props.subject, apiKey: defaultStaffApiKey,
   });
   saving.value = false;
 
@@ -722,7 +727,7 @@ async function uploadPendingImagesBeforeSave() {
     const result = await uploadAssetFile({
       file: item.file,
       key,
-      apiKey: defaultStaffApiKey,
+      subject: props.subject, apiKey: defaultStaffApiKey,
     });
     if (!result.success) {
       status.value = "error";

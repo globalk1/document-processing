@@ -163,6 +163,7 @@
 </template>
 
 <script setup>
+const props = defineProps({ subject: { type: String, default: "math" } });
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
 import {
@@ -222,8 +223,8 @@ onBeforeUnmount(() => {
 
 async function loadTaxonomy() {
   const [gradeResult, unitResult] = await Promise.all([
-    listMathBankGrades({}, { apiKey: defaultStaffApiKey }),
-    listMathBankUnits({}, { apiKey: defaultStaffApiKey }),
+    listMathBankGrades({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
+    listMathBankUnits({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
   ]);
   if (gradeResult.success) grades.value = gradeResult.data || [];
   if (unitResult.success) units.value = unitResult.data || [];
@@ -280,7 +281,7 @@ function fetchQuestionPage(cursor) {
       limit: pageSize,
       cursor,
     },
-    { apiKey: defaultStaffApiKey },
+    { subject: props.subject, apiKey: defaultStaffApiKey },
   );
 }
 

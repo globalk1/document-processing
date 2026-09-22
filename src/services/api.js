@@ -142,7 +142,7 @@ async function fetchMathBankJson(path, params = {}, options = {}) {
   const headers = { Accept: "application/json" };
   if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
 
-  const response = await fetch(`${API_URL}/math-bank${withQuery(path, params)}`, {
+  const response = await fetch(`${API_URL}/math-bank${withQuery(path, { ...params, subject: options.subject ?? params.subject })}`, {
     headers,
   });
   const result = await parseJson(response);
@@ -230,7 +230,7 @@ async function postMathBankJson(path, body, options = {}) {
   };
   if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
 
-  const response = await fetch(`${API_URL}/math-bank${path}`, {
+  const response = await fetch(`${API_URL}/math-bank${withQuery(path, { subject: options.subject })}`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -255,7 +255,7 @@ async function sendMathBankJson(path, body, options = {}) {
   };
   if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
 
-  const response = await fetch(`${API_URL}/math-bank${path}`, {
+  const response = await fetch(`${API_URL}/math-bank${withQuery(path, { subject: options.subject })}`, {
     method: options.method || "POST",
     headers,
     body: JSON.stringify(body),
@@ -278,7 +278,7 @@ async function deleteMathBankJson(path, options = {}) {
   const headers = {};
   if (options.apiKey) headers["X-API-KEY"] = options.apiKey;
 
-  const response = await fetch(`${API_URL}/math-bank${path}`, {
+  const response = await fetch(`${API_URL}/math-bank${withQuery(path, { subject: options.subject })}`, {
     method: "DELETE",
     headers,
   });
