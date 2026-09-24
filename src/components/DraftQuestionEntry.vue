@@ -171,15 +171,53 @@
             </label>
           </div>
 
-          <label class="field-label">
-            題目來源
-            <input
-              v-model="form.question_source"
-              class="text-input"
-              type="text"
-              placeholder="可空白"
-            />
-          </label>
+          <div class="field-label question-source-field">
+            <label for="draft-question-source">題目來源</label>
+            <div ref="questionSourceFieldRef" class="question-source-combobox">
+              <input
+                id="draft-question-source"
+                v-model="form.question_source"
+                class="text-input"
+                type="text"
+                placeholder="輸入或選擇題目來源（可空白）"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="draft-question-source-options"
+                :aria-expanded="questionSourceMenuOpen"
+                :aria-activedescendant="activeQuestionSourceId"
+                autocomplete="off"
+                @focus="openQuestionSourceMenu"
+                @click="openQuestionSourceMenu"
+                @input="handleQuestionSourceInput"
+                @keydown="handleQuestionSourceKeydown"
+              />
+              <div
+                v-if="questionSourceMenuOpen"
+                id="draft-question-source-options"
+                class="question-source-options"
+                role="listbox"
+              >
+                <button
+                  v-for="(source, index) in filteredQuestionSources"
+                  :id="questionSourceOptionId(index)"
+                  :key="source"
+                  class="question-source-option"
+                  :class="{ active: index === activeQuestionSourceIndex }"
+                  type="button"
+                  role="option"
+                  :aria-selected="source === form.question_source"
+                  @mouseenter="activeQuestionSourceIndex = index"
+                  @mousedown.prevent
+                  @click="selectQuestionSource(source)"
+                >
+                  {{ source }}
+                </button>
+                <p v-if="!filteredQuestionSources.length" class="question-source-empty">
+                  沒有符合的來源，可直接保留目前文字作為新來源。
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="word-workflow-section">
@@ -341,6 +379,7 @@ import {
   createStaffMathBankQuestion,
   deleteStaffMathBankQuestion,
   listMathBankGrades,
+  listMathBankQuestionSources,
   listMathBankUnits,
   searchStaffMathBankQuestions,
   uploadAssetFile,
@@ -377,6 +416,7 @@ function formatQuestionDifficulty(difficulty) {
 
 const grades = ref([]);
 const units = ref([]);
+const questionSources = ref([]);
 const drafts = ref([]);
 const selectedId = ref("");
 const loading = ref(false);
@@ -387,6 +427,9 @@ const allowDuplicate = ref(false);
 const uploadingImages = ref(false);
 const imageDragOver = ref(false);
 const imageInputRef = ref(null);
+const questionSourceFieldRef = ref(null);
+const questionSourceMenuOpen = ref(false);
+const activeQuestionSourceIndex = ref(-1);
 const pendingImages = ref([]);
 const form = reactive(createEmptyForm());
 const filters = reactive({
@@ -407,6 +450,18 @@ const filteredFilterUnits = computed(() =>
     ? units.value.filter((unit) => getUnitGradeId(unit) === filters.grade_id)
     : units.value,
 );
+const filteredQuestionSources = computed(() => {
+  const keyword = normalizeQuestionSource(form.question_source).toLocaleLowerCase("zh-Hant");
+  if (!keyword) return questionSources.value;
+  return questionSources.value.filter((source) =>
+    source.toLocaleLowerCase("zh-Hant").includes(keyword),
+  );
+});
+const activeQuestionSourceId = computed(() =>
+  questionSourceMenuOpen.value && activeQuestionSourceIndex.value >= 0
+    ? questionSourceOptionId(activeQuestionSourceIndex.value)
+    : undefined,
+);
 const imageAssets = computed(() => form.assets.filter(hasAssetContent));
 const previewImageAssets = computed(() => [
   ...imageAssets.value,
@@ -426,29 +481,86 @@ onActivated(() => window.addEventListener("paste", handlePaste));
 onDeactivated(() => window.removeEventListener("paste", handlePaste));
 
 onMounted(async () => {
+  document.addEventListener("mousedown", handleQuestionSourceOutsideClick);
   await loadTaxonomy();
   await loadDrafts();
 });
 
 onBeforeUnmount(() => {
   if (filterTimer) window.clearTimeout(filterTimer);
+  document.removeEventListener("mousedown", handleQuestionSourceOutsideClick);
   window.removeEventListener("paste", handlePaste);
   clearPendingImages();
 });
 
 async function loadTaxonomy() {
-  const [gradeResult, unitResult] = await Promise.all([
+  const [gradeResult, unitResult, sourceResult] = await Promise.all([
     listMathBankGrades({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
     listMathBankUnits({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
+    listMathBankQuestionSources({}, { subject: props.subject }),
   ]);
 
   if (gradeResult.success) grades.value = gradeResult.data || [];
   if (unitResult.success) units.value = unitResult.data || [];
+  if (sourceResult.success) questionSources.value = normalizeQuestionSources(sourceResult.data);
 
-  if (!gradeResult.success || !unitResult.success) {
+  if (!gradeResult.success || !unitResult.success || !sourceResult.success) {
     status.value = "error";
-    message.value = gradeResult.error || unitResult.error || "分類讀取失敗。";
+    message.value =
+      gradeResult.error || unitResult.error || sourceResult.error || "分類或題目來源讀取失敗。";
   }
+}
+
+function openQuestionSourceMenu() {
+  questionSourceMenuOpen.value = true;
+  activeQuestionSourceIndex.value = -1;
+}
+
+function closeQuestionSourceMenu() {
+  questionSourceMenuOpen.value = false;
+  activeQuestionSourceIndex.value = -1;
+}
+
+function handleQuestionSourceInput() {
+  openQuestionSourceMenu();
+}
+
+function handleQuestionSourceKeydown(event) {
+  const optionCount = filteredQuestionSources.value.length;
+
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    questionSourceMenuOpen.value = true;
+    if (!optionCount) return;
+    const offset = event.key === "ArrowDown" ? 1 : -1;
+    activeQuestionSourceIndex.value =
+      (activeQuestionSourceIndex.value + offset + optionCount) % optionCount;
+    return;
+  }
+
+  if (event.key === "Enter" && questionSourceMenuOpen.value && activeQuestionSourceIndex.value >= 0) {
+    event.preventDefault();
+    selectQuestionSource(filteredQuestionSources.value[activeQuestionSourceIndex.value]);
+    return;
+  }
+
+  if (event.key === "Escape" && questionSourceMenuOpen.value) {
+    event.preventDefault();
+    closeQuestionSourceMenu();
+  }
+}
+
+function selectQuestionSource(source) {
+  form.question_source = source;
+  closeQuestionSourceMenu();
+}
+
+function handleQuestionSourceOutsideClick(event) {
+  if (!questionSourceFieldRef.value?.contains(event.target)) closeQuestionSourceMenu();
+}
+
+function questionSourceOptionId(index) {
+  return `draft-question-source-option-${index}`;
 }
 
 async function loadDrafts() {
@@ -588,6 +700,24 @@ function normalizeQuestionSource(value) {
   return String(value || "").trim();
 }
 
+function normalizeQuestionSources(value) {
+  const values = Array.isArray(value) ? value : value?.results;
+  return [
+    ...new Set(
+      (Array.isArray(values) ? values : [])
+        .map((item) => normalizeQuestionSource(typeof item === "string" ? item : item?.name))
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function rememberQuestionSource(value) {
+  const source = normalizeQuestionSource(value);
+  if (source && !questionSources.value.includes(source)) {
+    questionSources.value = [...questionSources.value, source];
+  }
+}
+
 function validateForm() {
   if (!form.grade_id) return "請選擇年級。";
   if (!form.unit_id) return "請選擇單元。";
@@ -633,6 +763,7 @@ async function saveQuestion() {
   }
 
   const savedQuestion = result.data || {};
+  rememberQuestionSource(savedQuestion.question_source || form.question_source);
   await loadDrafts();
   if (savedQuestion.id) {
     const refreshedQuestion = drafts.value.find((question) => question.id === savedQuestion.id);
@@ -853,3 +984,57 @@ function getSaveError(result) {
   return result.error || "草稿儲存失敗。";
 }
 </script>
+
+<style scoped>
+.question-source-field {
+  display: grid;
+  gap: 6px;
+}
+
+.question-source-combobox {
+  position: relative;
+}
+
+.question-source-options {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #d5d7db;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(32, 33, 36, 0.14);
+}
+
+.question-source-option {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: transparent;
+  color: #202124;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.question-source-option:hover,
+.question-source-option.active {
+  background: #f0f2f5;
+}
+
+.question-source-empty {
+  margin: 0;
+  padding: 9px 10px;
+  color: #6a707b;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+</style>
