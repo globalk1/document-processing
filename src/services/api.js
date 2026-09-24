@@ -182,8 +182,25 @@ async function postDocumentJson(path, body) {
   return { success: true, data: result };
 }
 
-function getPublicAssetUrl(key) {
+export function getPublicAssetUrl(key) {
   return `${CDN_BASE_URL}/${encodeURI(key).replace(/%2F/g, "/")}`;
+}
+
+export async function renderMatplotlibPreview(code) {
+  try {
+    const response = await fetch(`${API_URL}/pdf/math-docs-matplotlib-preview/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const result = await parseJson(response);
+    if (!response.ok || !result.success || !result.image) {
+      return { success: false, error: result.error || "圖片產生失敗。" };
+    }
+    return { success: true, image: result.image };
+  } catch (error) {
+    return { success: false, error: error?.message || "無法連線至圖片預覽服務。" };
+  }
 }
 
 export async function uploadAssetFile({ file, key, apiKey = "" }) {

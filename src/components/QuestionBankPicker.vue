@@ -132,16 +132,37 @@
           <section class="question-editor-preview-block prompt">
             <strong>題目</strong>
             <p><MathText :content="question.prompt_md" fallback="尚未輸入題目" /></p>
+            <div v-if="getQuestionAssets(question, 'prompt').length" class="picker-asset-strip">
+              <QuestionAssetThumbnail
+                v-for="(asset, index) in getQuestionAssets(question, 'prompt')"
+                :key="asset.id || `prompt-${index}`"
+                :asset="asset"
+              />
+            </div>
           </section>
 
           <div class="question-editor-preview-grid">
             <section class="question-editor-preview-block answer">
               <strong>答案</strong>
               <p><MathText :content="question.answer_md" fallback="尚未輸入答案" /></p>
+              <div v-if="getQuestionAssets(question, 'answer').length" class="picker-asset-strip">
+                <QuestionAssetThumbnail
+                  v-for="(asset, index) in getQuestionAssets(question, 'answer')"
+                  :key="asset.id || `answer-${index}`"
+                  :asset="asset"
+                />
+              </div>
             </section>
             <section class="question-editor-preview-block solution">
               <strong>詳解</strong>
               <p><MathText :content="question.solution_md" fallback="尚未輸入詳解" /></p>
+              <div v-if="getQuestionAssets(question, 'solution').length" class="picker-asset-strip">
+                <QuestionAssetThumbnail
+                  v-for="(asset, index) in getQuestionAssets(question, 'solution')"
+                  :key="asset.id || `solution-${index}`"
+                  :asset="asset"
+                />
+              </div>
             </section>
           </div>
         </article>
@@ -166,6 +187,7 @@
 const props = defineProps({ subject: { type: String, default: "math" } });
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
+import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
 import {
   listMathBankGrades,
   listMathBankUnits,
@@ -185,6 +207,13 @@ const questionDifficulties = [
 
 function formatQuestionDifficulty(difficulty) {
   return questionDifficulties.find((item) => item.value === difficulty)?.label || difficulty || "-";
+}
+
+function getQuestionAssets(question, role) {
+  return (question.assets || [])
+    .filter((asset) => (asset.role || "prompt") === role)
+    .filter((asset) => asset.url || asset.storage_key || asset.source_code)
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
 }
 
 const grades = ref([]);

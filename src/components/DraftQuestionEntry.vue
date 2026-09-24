@@ -101,11 +101,15 @@
           <div>
             <h2 class="section-title">{{ selectedId ? "編輯草稿" : "新增草稿" }}</h2>
             <p>狀態固定為草稿。</p>
+            <div v-if="displayedUuid" class="draft-uuid">
+              <span>{{ selectedId ? "UUID" : "剛新增 UUID" }}</span>
+              <code>{{ displayedUuid }}</code>
+              <button class="ghost-button compact" type="button" @click="copyQuestionUuid">
+                複製 UUID
+              </button>
+            </div>
           </div>
           <div class="icon-group">
-            <button class="secondary-button compact" type="button" @click="copyPayload">
-              複製 JSON
-            </button>
             <button
               v-if="selectedId"
               class="ghost-button compact danger"
@@ -117,6 +121,7 @@
             </button>
           </div>
         </div>
+        <p v-if="lastCreatedId" class="message success" role="status">草稿已新增，表單已清空，可以繼續新增下一題。</p>
 
         <section class="word-workflow-section">
           <header class="word-workflow-header">
@@ -268,13 +273,41 @@
             </button>
           </section>
 
+          <div class="question-code-editor">
+            <label class="field-label" for="draft-figure-code">Figure Code（Python）</label>
+            <textarea
+              id="draft-figure-code"
+              v-model="newImageCode"
+              class="textarea compact-textarea source-code-textarea"
+              placeholder="輸入 Matplotlib Python 程式碼；預覽由後端產生"
+            ></textarea>
+            <button class="secondary-button compact" type="button" :disabled="!newImageCode.trim()" @click="addCodeImage">
+              加入程式碼圖片
+            </button>
+          </div>
+          <div v-if="form.assets.some((asset) => asset.source_language === 'python')" class="question-code-existing">
+            <div v-for="(asset, index) in form.assets.filter((item) => item.source_language === 'python')" :key="index" class="question-code-editor">
+              <label class="field-label">已加入的 Figure Code {{ index + 1 }}</label>
+              <textarea v-model="asset.source_code" class="textarea compact-textarea source-code-textarea"></textarea>
+              <button class="secondary-button compact" type="button" :disabled="!asset.source_code.trim()" @click="renderCodeAsset(asset)">
+                重新產生預覽
+              </button>
+              <button class="ghost-button compact danger" type="button" @click="removeCodeAsset(asset)">
+                移除程式碼圖片
+              </button>
+            </div>
+          </div>
+
           <div v-if="previewImageAssets.length" class="question-image-grid">
             <article
-              v-for="asset in previewImageAssets"
-              :key="asset.storage_key || asset.url"
+              v-for="(asset, index) in previewImageAssets"
+              :key="asset.storage_key || `image-${index}`"
               class="question-image-card"
             >
-              <img :src="asset.url" :alt="asset.alt_text || '題目圖片'" />
+              <img v-if="asset.url" :src="asset.url" :alt="asset.alt_text || '題目圖片'" />
+              <p v-else class="question-image-status">
+                {{ asset.preview_status === "loading" ? "正在向後端產生圖片..." : asset.preview_error || "圖片尚無預覽網址。" }}
+              </p>
               <div>
                 <strong>{{ asset.alt_text || "題目圖片" }}</strong>
                 <span>{{ asset.storage_key }}</span>
@@ -282,7 +315,7 @@
               <button
                 class="ghost-button compact danger"
                 type="button"
-                @click="removeAsset(asset.storage_key || asset.url)"
+                @click="removeAsset(asset)"
               >
                 移除
               </button>
@@ -348,10 +381,10 @@
           <section class="question-editor-preview-block prompt">
             <strong>題目</strong>
             <p><MathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
-            <div v-if="previewImageAssets.length" class="preview-image-strip">
+            <div v-if="previewImageAssets.some((asset) => asset.url)" class="preview-image-strip">
               <img
-                v-for="asset in previewImageAssets"
-                :key="`preview-${asset.storage_key || asset.url}`"
+                v-for="(asset, index) in previewImageAssets.filter((item) => item.url)"
+                :key="`preview-${asset.storage_key || index}`"
                 :src="asset.url"
                 :alt="asset.alt_text || '題目圖片'"
               />
@@ -378,15 +411,15 @@ import MathText from "./MathText.vue";
 import {
   createStaffMathBankQuestion,
   deleteStaffMathBankQuestion,
+  getPublicAssetUrl,
   listMathBankGrades,
   listMathBankQuestionSources,
   listMathBankUnits,
   searchStaffMathBankQuestions,
+  renderMatplotlibPreview,
   uploadAssetFile,
   updateStaffMathBankQuestion,
 } from "../services/api";
-
-const emit = defineEmits(["copy"]);
 
 const defaultStaffApiKey =
   import.meta.env.VITE_STAFF_API_KEY ||
@@ -419,6 +452,7 @@ const units = ref([]);
 const questionSources = ref([]);
 const drafts = ref([]);
 const selectedId = ref("");
+const lastCreatedId = ref("");
 const loading = ref(false);
 const saving = ref(false);
 const status = ref("idle");
@@ -431,6 +465,9 @@ const questionSourceFieldRef = ref(null);
 const questionSourceMenuOpen = ref(false);
 const activeQuestionSourceIndex = ref(-1);
 const pendingImages = ref([]);
+const newImageCode = ref("");
+const renderedImageStates = reactive({});
+const pendingRenders = new Map();
 const form = reactive(createEmptyForm());
 const filters = reactive({
   search: "",
@@ -462,9 +499,20 @@ const activeQuestionSourceId = computed(() =>
     ? questionSourceOptionId(activeQuestionSourceIndex.value)
     : undefined,
 );
+const displayedUuid = computed(() => selectedId.value || lastCreatedId.value);
 const imageAssets = computed(() => form.assets.filter(hasAssetContent));
 const previewImageAssets = computed(() => [
-  ...imageAssets.value,
+  ...imageAssets.value.map((asset) => {
+    const code = String(asset.source_code || "").trim();
+    const renderState = code ? renderedImageStates[code] : null;
+    return {
+      ...asset,
+      sourceAsset: asset,
+      url: asset.url || renderState?.image || (code ? "" : asset.storage_key ? getPublicAssetUrl(asset.storage_key) : ""),
+      preview_status: renderState?.status || "",
+      preview_error: renderState?.error || "",
+    };
+  }),
   ...pendingImages.value.map((item) =>
     normalizeAsset({
       role: "prompt",
@@ -476,6 +524,18 @@ const previewImageAssets = computed(() => [
     }),
   ),
 ]);
+
+async function ensureImageRendered(code) {
+  if (renderedImageStates[code]?.status === "success" || pendingRenders.has(code)) return;
+  renderedImageStates[code] = { status: "loading", image: "", error: "" };
+  const pending = renderMatplotlibPreview(code);
+  pendingRenders.set(code, pending);
+  const result = await pending;
+  pendingRenders.delete(code);
+  renderedImageStates[code] = result.success
+    ? { status: "success", image: result.image, error: "" }
+    : { status: "error", image: "", error: result.error || "圖片產生失敗。" };
+}
 
 onActivated(() => window.addEventListener("paste", handlePaste));
 onDeactivated(() => window.removeEventListener("paste", handlePaste));
@@ -643,7 +703,9 @@ function createEmptyForm() {
 
 function startCreate() {
   selectedId.value = "";
+  lastCreatedId.value = "";
   allowDuplicate.value = false;
+  newImageCode.value = "";
   clearPendingImages();
   Object.assign(form, createEmptyForm());
   status.value = "idle";
@@ -658,7 +720,9 @@ function selectDraft(question) {
   }
 
   selectedId.value = question.id || "";
+  lastCreatedId.value = "";
   allowDuplicate.value = false;
+  newImageCode.value = "";
   clearPendingImages();
   Object.assign(form, {
     grade_id: stringifyValue(question.grade?.id || question.grade_id),
@@ -674,6 +738,9 @@ function selectDraft(question) {
   });
   status.value = "idle";
   message.value = "";
+  form.assets.forEach((asset) => {
+    if (asset.source_code && !asset.url) ensureImageRendered(asset.source_code.trim());
+  });
 }
 
 function buildPayload() {
@@ -689,7 +756,7 @@ function buildPayload() {
     thinking: splitThinking(form.thinking),
     status: "draft",
     visibility: "public",
-    assets: form.assets.map(normalizeAsset),
+    assets: form.assets.filter(hasAssetContent).map(normalizeAsset),
   };
 
   if (allowDuplicate.value) payload.duplicate_policy = "allow";
@@ -754,9 +821,9 @@ async function saveQuestion() {
         subject: props.subject, apiKey: defaultStaffApiKey,
       })
     : await createStaffMathBankQuestion(buildPayload(), { subject: props.subject, apiKey: defaultStaffApiKey });
-  saving.value = false;
 
   if (!result.success) {
+    saving.value = false;
     status.value = "error";
     message.value = getSaveError(result);
     return;
@@ -765,14 +832,16 @@ async function saveQuestion() {
   const savedQuestion = result.data || {};
   rememberQuestionSource(savedQuestion.question_source || form.question_source);
   await loadDrafts();
-  if (savedQuestion.id) {
+  if (wasEditing && savedQuestion.id) {
     const refreshedQuestion = drafts.value.find((question) => question.id === savedQuestion.id);
     selectDraft(refreshedQuestion || savedQuestion);
   } else {
     startCreate();
+    lastCreatedId.value = savedQuestion.id || savedQuestion.uuid || "";
   }
+  saving.value = false;
   status.value = "success";
-  message.value = wasEditing ? "草稿已儲存。" : "草稿已新增。";
+  message.value = wasEditing ? "草稿已儲存。" : "草稿已新增，表單已清空。";
 }
 
 async function deleteQuestion() {
@@ -800,12 +869,49 @@ async function deleteQuestion() {
   message.value = "草稿已刪除。";
 }
 
-function copyPayload() {
-  emit("copy", JSON.stringify(buildPayload(), null, 2));
+async function copyQuestionUuid() {
+  if (!displayedUuid.value) return;
+  try {
+    await navigator.clipboard.writeText(displayedUuid.value);
+    status.value = "success";
+    message.value = "UUID 已複製。";
+  } catch {
+    status.value = "error";
+    message.value = "UUID 複製失敗，請手動選取。";
+  }
 }
 
 function openImagePicker() {
   imageInputRef.value?.click();
+}
+
+function addCodeImage() {
+  const code = newImageCode.value.trim();
+  if (!code) return;
+  form.assets.push(normalizeAsset({
+    role: "prompt",
+    source_language: "python",
+    source_code: code,
+    alt_text: "程式碼圖片",
+    sort_order: form.assets.length,
+  }));
+  newImageCode.value = "";
+  ensureImageRendered(code);
+}
+
+function renderCodeAsset(asset) {
+  const code = String(asset.source_code || "").trim();
+  if (!code) return;
+  asset.source_language = "python";
+  asset.url = "";
+  asset.storage_key = "";
+  asset.mime_type = "";
+  ensureImageRendered(code);
+}
+
+function removeCodeAsset(asset) {
+  const index = form.assets.indexOf(asset);
+  if (index >= 0) form.assets.splice(index, 1);
 }
 
 function handleImagePicker(event) {
@@ -885,16 +991,15 @@ async function uploadPendingImagesBeforeSave() {
   return uploadedAssets;
 }
 
-function removeAsset(assetKey) {
-  const pendingImage = pendingImages.value.find((item) => item.id === assetKey);
+function removeAsset(asset) {
+  const pendingImage = pendingImages.value.find((item) => item.id === asset.storage_key);
   if (pendingImage) {
     URL.revokeObjectURL(pendingImage.previewUrl);
-    pendingImages.value = pendingImages.value.filter((item) => item.id !== assetKey);
+    pendingImages.value = pendingImages.value.filter((item) => item.id !== asset.storage_key);
     return;
   }
-  form.assets = form.assets.filter(
-    (asset) => (asset.storage_key || asset.url) !== assetKey,
-  );
+  const assetIndex = form.assets.indexOf(asset.sourceAsset);
+  if (assetIndex >= 0) form.assets.splice(assetIndex, 1);
 }
 
 function clearPendingImages() {
