@@ -3,7 +3,7 @@
     <aside class="control-panel">
       <div class="draft-list-header">
         <div>
-          <h2 class="section-title">公開題目</h2>
+          <h2 class="section-title">題目列表</h2>
           <p>{{ questions.length }}{{ hasMore ? "+" : "" }} 題</p>
         </div>
         <button class="secondary-button compact" :disabled="loading" type="button" @click="loadQuestions">
@@ -48,6 +48,15 @@
           </label>
         </div>
         <label>
+          <span class="field-label">來源</span>
+          <select v-model="filters.question_source" class="select-input" @change="loadQuestions">
+            <option value="">全部來源</option>
+            <option v-for="source in questionSources" :key="source" :value="source">
+              {{ source }}
+            </option>
+          </select>
+        </label>
+        <label>
           <span class="field-label">難度</span>
           <select v-model="filters.difficulty" class="select-input" @change="loadQuestions">
             <option value="">全部</option>
@@ -66,13 +75,40 @@
       <section class="action-box">
         <h3>匯出</h3>
         <p class="field-hint">已選 {{ selectedQuestions.length }} 題。</p>
+        <label>
+          <span class="field-label">模板</span>
+          <select v-model="examTemplateId" class="select-input" @change="handleExamTemplateChange">
+            <option value="elementary_exam_paper">國小段考卷</option>
+            <option value="junior_exam_paper">國中段考卷</option>
+            <option value="high_school_exam_paper">高中段考卷</option>
+          </select>
+        </label>
+        <label>
+          <span class="field-label">檔名</span>
+          <input v-model="filename" class="text-input" type="text" />
+        </label>
+        <label>
+          <span class="field-label">標題</span>
+          <input v-model="title" class="text-input" type="text" />
+        </label>
+        <label>
+          <span class="field-label">範圍</span>
+          <input v-model="examRange" class="text-input" type="text" />
+        </label>
+        <label>
+          <span class="field-label">版本</span>
+          <select v-model="mode" class="select-input">
+            <option value="teaching">教師版</option>
+            <option value="student">學生版</option>
+          </select>
+        </label>
         <button
           class="primary-button full"
-          :disabled="!selectedQuestions.length"
+          :disabled="!selectedQuestions.length || exporting"
           type="button"
           @click="exportSelectedWord"
         >
-          匯出 Word
+          {{ exporting ? "產生段考卷中..." : "匯出段考卷 Word" }}
         </button>
         <button
           class="secondary-button full"
@@ -91,7 +127,7 @@
       <div class="question-bank-toolbar">
         <div>
           <h2 class="section-title">題目列表</h2>
-          <p>只顯示公開題目。</p>
+          <p>選取需要輸出的題目。</p>
         </div>
         <div class="icon-group">
           <button class="ghost-button compact" :disabled="!questions.length" type="button" @click="selectAllLoaded">
@@ -189,20 +225,25 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
 import {
+  generatePublicExamFromBank,
   listMathBankGrades,
+  listMathBankQuestionSources,
   listMathBankUnits,
   searchStaffMathBankQuestions,
 } from "../services/api";
 
-const defaultStaffApiKey =
-  import.meta.env.VITE_STAFF_API_KEY ||
-  "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 const pageSize = 50;
+const examNames = {
+  elementary_exam_paper: "國小段考卷",
+  junior_exam_paper: "國中段考卷",
+  high_school_exam_paper: "高中段考卷",
+};
 const questionDifficulties = [
   { value: "A", label: "A 挑戰型" },
   { value: "B", label: "B 進階型" },
   { value: "C", label: "C 基礎型" },
   { value: "S", label: "S 究極型" },
+  { value: "U", label: "未分類" },
 ];
 
 function formatQuestionDifficulty(difficulty) {
@@ -218,8 +259,15 @@ function getQuestionAssets(question, role) {
 
 const grades = ref([]);
 const units = ref([]);
+const questionSources = ref([]);
 const questions = ref([]);
 const selectedMap = ref({});
+const examTemplateId = ref("junior_exam_paper");
+const filename = ref("國中段考卷.docx");
+const title = ref("國中段考卷");
+const examRange = ref("");
+const mode = ref("teaching");
+const exporting = ref(false);
 const loading = ref(false);
 const loadingMore = ref(false);
 const hasMore = ref(false);
@@ -231,6 +279,7 @@ const filters = reactive({
   grade_id: "",
   unit_id: "",
   difficulty: "",
+  question_source: "",
 });
 let loadTimer = null;
 
@@ -251,22 +300,31 @@ onBeforeUnmount(() => {
 });
 
 async function loadTaxonomy() {
-  const [gradeResult, unitResult] = await Promise.all([
-    listMathBankGrades({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
-    listMathBankUnits({}, { subject: props.subject, apiKey: defaultStaffApiKey }),
+  const [gradeResult, unitResult, sourceResult] = await Promise.all([
+    listMathBankGrades({}, { subject: props.subject }),
+    listMathBankUnits({}, { subject: props.subject }),
+    listMathBankQuestionSources({}, { subject: props.subject }),
   ]);
   if (gradeResult.success) grades.value = gradeResult.data || [];
   if (unitResult.success) units.value = unitResult.data || [];
-  if (!gradeResult.success || !unitResult.success) {
+  if (sourceResult.success) {
+    const sources = Array.isArray(sourceResult.data)
+      ? sourceResult.data
+      : sourceResult.data?.results || [];
+    questionSources.value = [...new Set(sources
+      .map((source) => String(typeof source === "string" ? source : source?.name || "").trim())
+      .filter(Boolean))];
+  }
+  if (!gradeResult.success || !unitResult.success || !sourceResult.success) {
     status.value = "error";
-    message.value = gradeResult.error || unitResult.error || "分類讀取失敗。";
+    message.value = gradeResult.error || unitResult.error || sourceResult.error || "分類或來源讀取失敗。";
   }
 }
 
 async function loadQuestions() {
   loading.value = true;
   status.value = "loading";
-  message.value = "正在讀取公開題目...";
+  message.value = "正在讀取題目...";
 
   const result = await fetchQuestionPage("");
   loading.value = false;
@@ -276,11 +334,11 @@ async function loadQuestions() {
     return;
   }
 
-  questions.value = filterPublicQuestions(result.data.results || []);
+  questions.value = result.data.results || [];
   hasMore.value = Boolean(result.data.has_more && result.data.next_cursor);
   nextCursor.value = result.data.next_cursor || "";
   status.value = "success";
-  message.value = `已讀取 ${questions.value.length} 題公開題目。`;
+  message.value = `已讀取 ${questions.value.length} 題。`;
 }
 
 async function loadMore() {
@@ -293,7 +351,7 @@ async function loadMore() {
     message.value = result.error || "更多題目讀取失敗。";
     return;
   }
-  questions.value = [...questions.value, ...filterPublicQuestions(result.data.results || [])];
+  questions.value = [...questions.value, ...(result.data.results || [])];
   hasMore.value = Boolean(result.data.has_more && result.data.next_cursor);
   nextCursor.value = result.data.next_cursor || "";
 }
@@ -305,17 +363,13 @@ function fetchQuestionPage(cursor) {
       grade_id: filters.grade_id,
       unit_id: filters.unit_id,
       difficulty: filters.difficulty,
-      visibility: "public",
+      question_source: filters.question_source,
       include_details: "true",
       limit: pageSize,
       cursor,
     },
-    { subject: props.subject, apiKey: defaultStaffApiKey },
+    { subject: props.subject },
   );
-}
-
-function filterPublicQuestions(items) {
-  return items.filter((question) => !question.visibility || question.visibility === "public");
 }
 
 function handleGradeChange() {
@@ -336,6 +390,7 @@ function resetFilters() {
   filters.grade_id = "";
   filters.unit_id = "";
   filters.difficulty = "";
+  filters.question_source = "";
   loadQuestions();
 }
 
@@ -365,81 +420,48 @@ function clearSelection() {
   selectedMap.value = {};
 }
 
-function exportSelectedWord() {
-  if (!selectedQuestions.value.length) return;
-  const html = buildWordHtml(selectedQuestions.value);
-  const blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `題庫挑題-${formatDateForFilename(new Date())}.doc`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+function handleExamTemplateChange() {
+  const nextName = examNames[examTemplateId.value];
+  if (!title.value.trim() || Object.values(examNames).includes(title.value.trim())) title.value = nextName;
+  if (!filename.value.trim() || Object.values(examNames).some((name) => filename.value.trim() === `${name}.docx`)) {
+    filename.value = `${nextName}.docx`;
+  }
 }
 
-function buildWordHtml(items) {
-  const body = items
-    .map(
-      (question, index) => `
-        <section class="question">
-          <h2>第 ${index + 1} 題</h2>
-          <p class="meta">${escapeHtml(question.grade?.name || "-")} / ${escapeHtml(
-            question.unit?.name || "-",
-          )}${question.question_source ? ` / 來源：${escapeHtml(question.question_source)}` : ""}</p>
-          <div class="block"><strong>題目</strong>${formatMultiline(question.prompt_md || "")}</div>
-          <div class="block"><strong>答案</strong>${formatMultiline(question.answer_md || "")}</div>
-          <div class="block"><strong>詳解</strong>${formatMultiline(question.solution_md || "")}</div>
-        </section>
-      `,
-    )
-    .join("");
-
-  return `
-    <!doctype html>
-    <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>題庫挑題</title>
-        <style>
-          body { font-family: "Noto Sans TC", "Microsoft JhengHei", Arial, sans-serif; color: #111; line-height: 1.7; }
-          h1 { font-size: 22pt; margin: 0 0 18pt; }
-          h2 { font-size: 14pt; margin: 0 0 6pt; }
-          .question { page-break-inside: avoid; margin: 0 0 18pt; padding-bottom: 12pt; border-bottom: 1px solid #ddd; }
-          .meta { margin: 0 0 8pt; color: #555; }
-          .block { margin: 8pt 0; }
-          .block strong { display: block; margin-bottom: 3pt; color: #333; }
-          p { margin: 0 0 4pt; }
-        </style>
-      </head>
-      <body>
-        <h1>題庫挑題</h1>
-        ${body}
-      </body>
-    </html>
-  `;
-}
-
-function formatMultiline(value) {
-  const lines = String(value || "").split(/\r?\n/);
-  if (!lines.some((line) => line.trim())) return "<p>（空白）</p>";
-  return lines.map((line) => `<p>${escapeHtml(line) || "&nbsp;"}</p>`).join("");
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function formatDateForFilename(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}${month}${day}`;
+async function exportSelectedWord() {
+  if (!selectedQuestions.value.length || exporting.value) return;
+  exporting.value = true;
+  status.value = "loading";
+  message.value = "正在產生段考卷 Word...";
+  const defaultName = examNames[examTemplateId.value];
+  const outputFilename = (filename.value.trim() || `${defaultName}.docx`).replace(/\.docx$/i, "") + ".docx";
+  try {
+    const result = await generatePublicExamFromBank({
+      questionIds: selectedQuestions.value.map((question) => question.id),
+      filename: outputFilename,
+      title: title.value.trim() || defaultName,
+      templateId: examTemplateId.value,
+      examRange: examRange.value.trim(),
+      mode: mode.value,
+    });
+    if (!result.success) {
+      status.value = "error";
+      message.value = result.error || "段考卷產生失敗。";
+      return;
+    }
+    const url = URL.createObjectURL(result.blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = result.filename || outputFilename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    status.value = "success";
+    message.value = "段考卷 Word 已開始下載。";
+  } finally {
+    exporting.value = false;
+  }
 }
 
 function getUnitGradeId(unit) {

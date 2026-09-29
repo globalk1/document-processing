@@ -686,10 +686,11 @@ const questionDifficulties = [
   { value: "B", label: "B 進階型" },
   { value: "C", label: "C 基礎型" },
   { value: "S", label: "S 究極型" },
+  { value: "U", label: "未分類" },
 ];
 
 function formatQuestionDifficulty(difficulty) {
-  const value = difficulty || "C";
+  const value = difficulty || "U";
   return questionDifficulties.find((item) => item.value === value)?.label || value;
 }
 const assetRoles = [
@@ -1062,7 +1063,7 @@ function applyQuestionToForm(question) {
     grade_id: question.grade?.id || question.grade_id || "",
     unit_id: question.unit?.id || question.unit_id || "",
     type: question.type || "calculation",
-    difficulty: question.difficulty || "C",
+    difficulty: question.difficulty || "U",
     question_source: normalizeQuestionSource(question.question_source),
     prompt_md: question.prompt_md || "",
     answer_md: question.answer_md || "",
@@ -1082,7 +1083,7 @@ function createEmptyQuestionForm() {
     grade_id: "",
     unit_id: "",
     type: "calculation",
-    difficulty: "C",
+    difficulty: "U",
     question_source: "",
     prompt_md: "",
     answer_md: "",
@@ -1353,7 +1354,7 @@ function normalizeQuestionJsonPayload(questionJson = {}) {
     grade_id: stringifyFormValue(firstDefined(questionJson.grade_id, questionJson.grade?.id)),
     unit_id: stringifyFormValue(firstDefined(questionJson.unit_id, questionJson.unit?.id)),
     type: stringifyFormValue(firstDefined(questionJson.type, "calculation")) || "calculation",
-    difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, "C")) || "C",
+    difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, "U")) || "U",
     question_source: normalizeQuestionSource(
       firstDefined(questionJson.question_source, questionJson.source, questionJson.questionSource),
     ),
@@ -1415,7 +1416,7 @@ function applyQuestionJsonToForm(questionJson) {
       firstDefined(questionJson.unit_id, questionJson.unit?.id, questionForm.unit_id),
     ),
     type: stringifyFormValue(firstDefined(questionJson.type, questionForm.type)) || "calculation",
-    difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, questionForm.difficulty)) || "C",
+    difficulty: stringifyFormValue(firstDefined(questionJson.difficulty, questionForm.difficulty)) || "U",
     question_source: normalizeQuestionSource(
       firstDefined(
         questionJson.question_source,

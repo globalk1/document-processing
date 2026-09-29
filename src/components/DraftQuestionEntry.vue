@@ -440,10 +440,11 @@ const questionDifficulties = [
   { value: "B", label: "B 進階型" },
   { value: "C", label: "C 基礎型" },
   { value: "S", label: "S 究極型" },
+  { value: "U", label: "未分類" },
 ];
 
 function formatQuestionDifficulty(difficulty) {
-  const value = difficulty || "C";
+  const value = difficulty || "U";
   return questionDifficulties.find((item) => item.value === value)?.label || value;
 }
 
@@ -691,7 +692,7 @@ function createEmptyForm() {
     grade_id: "",
     unit_id: "",
     type: "calculation",
-    difficulty: "C",
+    difficulty: "U",
     question_source: "",
     prompt_md: "",
     answer_md: "",
@@ -728,7 +729,7 @@ function selectDraft(question) {
     grade_id: stringifyValue(question.grade?.id || question.grade_id),
     unit_id: stringifyValue(question.unit?.id || question.unit_id),
     type: question.type || "calculation",
-    difficulty: question.difficulty || "C",
+    difficulty: question.difficulty || "U",
     question_source: normalizeQuestionSource(question.question_source),
     prompt_md: question.prompt_md || "",
     answer_md: question.answer_md || "",

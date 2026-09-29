@@ -372,7 +372,7 @@ export async function buildMathBankJson({
   unitId,
   questionSource = "",
   defaultType = "calculation",
-  defaultDifficulty = "C",
+  defaultDifficulty = "U",
 }) {
   const result = await postDocumentJson("/pdf/math-bank-json/", {
     text,
@@ -677,6 +677,47 @@ export async function generateWordFromBank({
   } catch (error) {
     console.error("generateWordFromBank failed", error);
     return { success: false, error: "無法連線至題庫講義產生服務", status: 0 };
+  }
+}
+
+export async function generatePublicExamFromBank({
+  questionIds,
+  filename,
+  title,
+  templateId,
+  examRange = "",
+  mode = "teaching",
+}) {
+  try {
+    const response = await fetch(`${API_URL}/word/public-exams/generate-from-bank/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        question_ids: questionIds,
+        filename,
+        title,
+        template_id: templateId,
+        exam_range: examRange,
+        mode,
+        section_mode: "selected",
+      }),
+    });
+    if (response.ok) {
+      return {
+        success: true,
+        blob: await response.blob(),
+        filename: getDownloadFilename(response, filename),
+      };
+    }
+    const result = await parseJson(response);
+    return {
+      success: false,
+      error: result.error || result.detail || "段考卷產生失敗",
+      status: response.status,
+    };
+  } catch (error) {
+    console.error("generatePublicExamFromBank failed", error);
+    return { success: false, error: "無法連線至段考卷產生服務", status: 0 };
   }
 }
 

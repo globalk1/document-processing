@@ -221,6 +221,7 @@
                   <option value="B">B 進階型</option>
                   <option value="C">C 基礎型</option>
                   <option value="S">S 究極型</option>
+                  <option value="U">未分類</option>
                 </select>
               </label>
             </div>
@@ -424,6 +425,7 @@ const QUESTION_DIFFICULTY_LABELS = {
   B: "B 進階型",
   C: "C 基礎型",
   S: "S 究極型",
+  U: "未分類",
 };
 
 const localStaffApiKey = ref(props.staffApiKey);
@@ -806,7 +808,7 @@ function questionType(question) {
 }
 
 function questionDifficulty(question) {
-  return question.math_bank?.difficulty || "C";
+  return question.math_bank?.difficulty || "U";
 }
 
 function questionGradeId(question) {
@@ -928,7 +930,7 @@ function createEmptyQuestion(number) {
     asset_ids: [],
     math_bank: {
       type: "calculation",
-      difficulty: "C",
+      difficulty: "U",
       question_source: "",
       status: "draft",
       visibility: "public",
@@ -1007,7 +1009,7 @@ function buildMathBankPayload(document, overrides = {}) {
         grade_id: metadata.grade_id || overrides.grade_id || "",
         unit_id: metadata.unit_id || overrides.unit_id || "",
         type: overrides.type || metadata.type || inferQuestionType(question),
-        difficulty: overrides.difficulty || metadata.difficulty || "C",
+        difficulty: overrides.difficulty || metadata.difficulty || "U",
         question_source: normalizeQuestionSource(
           firstDefined(metadata.question_source, metadata.source, metadata.questionSource),
         ),
