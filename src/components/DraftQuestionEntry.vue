@@ -86,7 +86,7 @@
         >
           <span>{{ question.grade?.name || "-" }} / {{ question.unit?.name || "-" }}</span>
           <strong class="draft-list-preview">
-            <MathText :content="question.prompt_md" fallback="無題目" />
+            <MarkdownMathText :content="question.prompt_md" fallback="無題目" />
           </strong>
           <small>{{ formatQuestionDifficulty(question.difficulty) }} · 草稿</small>
         </button>
@@ -96,11 +96,21 @@
     </aside>
 
     <section class="output-panel question-entry-editor">
+      <div
+        v-if="loading && initialQuestionId"
+        class="question-entry-loading-overlay"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="question-entry-loading-spinner" aria-hidden="true"></span>
+        <strong>正在載入題目</strong>
+        <span>準備開啟編輯表單...</span>
+      </div>
       <form class="simple-question-form" @submit.prevent="saveQuestion">
         <div class="question-bank-toolbar">
           <div>
-            <h2 class="section-title">{{ selectedId ? "編輯草稿" : "新增草稿" }}</h2>
-            <p>狀態固定為草稿。</p>
+            <h2 class="section-title">{{ selectedId ? "編輯題目" : "新增草稿" }}</h2>
+            <p>{{ selectedId ? `目前狀態：${formatQuestionStatus(editingStatus)}` : "新題目預設為草稿。" }}</p>
             <div v-if="displayedUuid" class="draft-uuid">
               <span>{{ selectedId ? "UUID" : "剛新增 UUID" }}</span>
               <code>{{ displayedUuid }}</code>
@@ -111,7 +121,7 @@
           </div>
           <div class="icon-group">
             <button
-              v-if="selectedId"
+              v-if="selectedId && editingStatus !== 'published'"
               class="ghost-button compact danger"
               :disabled="saving"
               type="button"
@@ -234,14 +244,36 @@
             <strong>LaTeX</strong>
           </header>
 
-          <label class="field-label">
-            題目 Markdown / KaTeX
-            <textarea
-              v-model="form.prompt_md"
-              class="textarea compact-textarea question-markdown-textarea"
-              placeholder="輸入題目內容。選擇題可直接寫成：(A) ... (B) ..."
-            ></textarea>
-          </label>
+          <div class="simple-preview simple-preview-inline">
+            <div class="panel-header">
+              <h2 class="section-title">預覽</h2>
+              <button class="secondary-button compact" type="button" @click="contentEditorOpen = true">
+                編輯
+              </button>
+            </div>
+            <div class="question-editor-preview-grid">
+              <section class="question-editor-preview-block prompt">
+                <strong>題目</strong>
+                <p><MarkdownMathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
+                <div v-if="previewImageAssets.some((asset) => asset.url)" class="preview-image-strip">
+                  <img
+                    v-for="(asset, index) in previewImageAssets.filter((item) => item.url)"
+                    :key="`preview-inline-${asset.storage_key || index}`"
+                    :src="asset.url"
+                    :alt="asset.alt_text || '題目圖片'"
+                  />
+                </div>
+              </section>
+              <section class="question-editor-preview-block answer">
+                <strong>答案</strong>
+                <p><MarkdownMathText :content="form.answer_md" fallback="尚未輸入答案" /></p>
+              </section>
+              <section class="question-editor-preview-block solution">
+                <strong>詳解</strong>
+                <p><MarkdownMathText :content="form.solution_md" fallback="尚未輸入詳解" /></p>
+              </section>
+            </div>
+          </div>
 
           <section
             class="question-image-upload"
@@ -322,34 +354,6 @@
             </article>
           </div>
 
-          <div class="filter-grid two">
-            <label class="field-label">
-              答案
-              <textarea
-                v-model="form.answer_md"
-                class="textarea compact-textarea answer-textarea"
-                placeholder="輸入答案。"
-              ></textarea>
-            </label>
-
-            <label class="field-label">
-              思維（每行一項）
-              <textarea
-                v-model="form.thinking"
-                class="textarea compact-textarea thinking-textarea"
-                placeholder="例如：座標幾何&#10;外接圓"
-              ></textarea>
-            </label>
-          </div>
-
-          <label class="field-label">
-            詳解
-            <textarea
-              v-model="form.solution_md"
-              class="textarea compact-textarea solution-textarea"
-              placeholder="輸入詳解。"
-            ></textarea>
-          </label>
         </section>
 
         <section class="word-workflow-section">
@@ -366,7 +370,16 @@
 
           <div class="editor-action-row">
             <button class="primary-button" :disabled="saving" type="submit">
-              {{ saving ? "儲存中" : selectedId ? "儲存草稿" : "新增草稿" }}
+              {{ saving ? "儲存中" : selectedId && editingStatus === "published" ? "儲存並保持公開" : selectedId ? "儲存草稿" : "新增草稿" }}
+            </button>
+            <button
+              v-if="selectedId && editingStatus !== 'archived'"
+              class="secondary-button"
+              :disabled="saving"
+              type="button"
+              @click="toggleEditingStatus"
+            >
+              {{ editingStatus === "published" ? "切換為草稿" : "切換為公開" }}
             </button>
             <button class="secondary-button" :disabled="saving" type="button" @click="startCreate">
               清空新增
@@ -375,42 +388,101 @@
         </section>
       </form>
 
-      <section class="simple-preview">
-        <h2 class="section-title">預覽</h2>
-        <div class="question-editor-preview-grid">
-          <section class="question-editor-preview-block prompt">
-            <strong>題目</strong>
-            <p><MathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
-            <div v-if="previewImageAssets.some((asset) => asset.url)" class="preview-image-strip">
-              <img
-                v-for="(asset, index) in previewImageAssets.filter((item) => item.url)"
-                :key="`preview-${asset.storage_key || index}`"
-                :src="asset.url"
-                :alt="asset.alt_text || '題目圖片'"
-              />
+      <div
+        v-if="contentEditorOpen"
+        class="preview-editor-modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="draft-content-editor-title"
+        @mousedown.self="contentEditorOpen = false"
+      >
+        <section class="preview-editor-modal-panel draft-content-editor-modal">
+          <header class="question-bank-toolbar">
+            <div>
+              <h2 id="draft-content-editor-title" class="section-title">左右編輯</h2>
+              <p>左側輸入 Markdown／LaTeX，右側即時渲染題目、答案與詳解。</p>
             </div>
-          </section>
-          <section class="question-editor-preview-block answer">
-            <strong>答案</strong>
-            <p><MathText :content="form.answer_md" fallback="尚未輸入答案" /></p>
-          </section>
-          <section class="question-editor-preview-block solution">
-            <strong>詳解</strong>
-            <p><MathText :content="form.solution_md" fallback="尚未輸入詳解" /></p>
-          </section>
-        </div>
-      </section>
+            <button class="icon-button" title="關閉左右編輯" type="button" @click="contentEditorOpen = false">×</button>
+          </header>
+
+          <div class="preview-editor-modal-grid">
+            <div class="preview-editor-textboxes">
+              <label class="field-label">
+                題目內容（Markdown／LaTeX）
+                <textarea
+                  v-model="form.prompt_md"
+                  class="textarea preview-editor-textarea question-modal-textarea"
+                  placeholder="例如：求 $x^2+y^2=1$ 的半徑。選擇題可寫：(A) ..."
+                ></textarea>
+              </label>
+              <label class="field-label">
+                答案（Markdown／LaTeX）
+                <textarea
+                  v-model="form.answer_md"
+                  class="textarea preview-editor-textarea answer-modal-textarea"
+                  placeholder="輸入答案，例如：$r=1$"
+                ></textarea>
+              </label>
+              <label class="field-label">
+                思維（每行一項）
+                <textarea
+                  v-model="form.thinking"
+                  class="textarea preview-editor-textarea thinking-textarea"
+                  placeholder="例如：座標幾何&#10;外接圓"
+                ></textarea>
+              </label>
+              <label class="field-label">
+                詳解（Markdown／LaTeX）
+                <textarea
+                  v-model="form.solution_md"
+                  class="textarea preview-editor-textarea solution-modal-textarea"
+                  placeholder="輸入推導過程與 LaTeX 詳解。"
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="preview-editor-output">
+              <section aria-live="polite">
+                <strong>題目預覽</strong>
+                <p><MarkdownMathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
+                <div v-if="previewImageAssets.some((asset) => asset.url)" class="preview-image-strip">
+                  <img
+                    v-for="(asset, index) in previewImageAssets.filter((item) => item.url)"
+                    :key="`modal-preview-${asset.storage_key || index}`"
+                    :src="asset.url"
+                    :alt="asset.alt_text || '題目圖片'"
+                  />
+                </div>
+              </section>
+              <section class="answer-preview" aria-live="polite">
+                <strong>答案預覽</strong>
+                <p><MarkdownMathText :content="form.answer_md" fallback="尚未輸入答案" /></p>
+              </section>
+              <section class="solution-preview" aria-live="polite">
+                <strong>詳解預覽</strong>
+                <p><MarkdownMathText :content="form.solution_md" fallback="尚未輸入詳解" /></p>
+              </section>
+            </div>
+          </div>
+        </section>
+      </div>
+
     </section>
   </section>
 </template>
 
 <script setup>
-const props = defineProps({ subject: { type: String, default: "math" } });
-import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref } from "vue";
-import MathText from "./MathText.vue";
+const props = defineProps({
+  subject: { type: String, default: "math" },
+  initialQuestionId: { type: String, default: "" },
+});
+const emit = defineEmits(["copy", "saved"]);
+import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import MarkdownMathText from "./MarkdownMathText.vue";
 import {
   createStaffMathBankQuestion,
   deleteStaffMathBankQuestion,
+  getStaffMathBankQuestion,
   getPublicAssetUrl,
   listMathBankGrades,
   listMathBankQuestionSources,
@@ -448,11 +520,21 @@ function formatQuestionDifficulty(difficulty) {
   return questionDifficulties.find((item) => item.value === value)?.label || value;
 }
 
+function formatQuestionStatus(statusValue) {
+  return {
+    draft: "草稿",
+    published: "公開",
+    archived: "封存",
+  }[statusValue] || statusValue || "未標示";
+}
+
 const grades = ref([]);
 const units = ref([]);
 const questionSources = ref([]);
 const drafts = ref([]);
 const selectedId = ref("");
+const editingStatus = ref("draft");
+const editingVisibility = ref("public");
 const lastCreatedId = ref("");
 const loading = ref(false);
 const saving = ref(false);
@@ -467,6 +549,7 @@ const questionSourceMenuOpen = ref(false);
 const activeQuestionSourceIndex = ref(-1);
 const pendingImages = ref([]);
 const newImageCode = ref("");
+const contentEditorOpen = ref(false);
 const renderedImageStates = reactive({});
 const pendingRenders = new Map();
 const form = reactive(createEmptyForm());
@@ -545,7 +628,15 @@ onMounted(async () => {
   document.addEventListener("mousedown", handleQuestionSourceOutsideClick);
   await loadTaxonomy();
   await loadDrafts();
+  await openInitialQuestion();
 });
+
+watch(
+  () => props.initialQuestionId,
+  async (questionId, previousQuestionId) => {
+    if (questionId && questionId !== previousQuestionId) await openInitialQuestion(questionId);
+  },
+);
 
 onBeforeUnmount(() => {
   if (filterTimer) window.clearTimeout(filterTimer);
@@ -666,6 +757,28 @@ async function loadDrafts() {
   message.value = `已讀取 ${allDrafts.length} 題草稿。`;
 }
 
+async function openInitialQuestion(questionId = props.initialQuestionId) {
+  if (!questionId) return;
+  loading.value = true;
+  status.value = "loading";
+  message.value = "正在載入題目，準備編輯...";
+  try {
+    const result = await getStaffMathBankQuestion(questionId, {
+      subject: props.subject,
+      apiKey: defaultStaffApiKey,
+    });
+    if (!result.success) {
+      status.value = "error";
+      message.value = result.error || "題目讀取失敗。";
+      return;
+    }
+    selectDraft(result.data);
+    message.value = "已從題庫載入題目，可直接編輯。";
+  } finally {
+    loading.value = false;
+  }
+}
+
 function handleFilterGradeChange() {
   filters.unit_id = "";
   loadDrafts();
@@ -703,7 +816,10 @@ function createEmptyForm() {
 }
 
 function startCreate() {
+  contentEditorOpen.value = false;
   selectedId.value = "";
+  editingStatus.value = "draft";
+  editingVisibility.value = "public";
   lastCreatedId.value = "";
   allowDuplicate.value = false;
   newImageCode.value = "";
@@ -714,13 +830,10 @@ function startCreate() {
 }
 
 function selectDraft(question) {
-  if (question.status && question.status !== "draft") {
-    status.value = "error";
-    message.value = "只能編輯草稿題目。";
-    return;
-  }
-
+  contentEditorOpen.value = false;
   selectedId.value = question.id || "";
+  editingStatus.value = question.status || "draft";
+  editingVisibility.value = question.visibility || "public";
   lastCreatedId.value = "";
   allowDuplicate.value = false;
   newImageCode.value = "";
@@ -744,6 +857,13 @@ function selectDraft(question) {
   });
 }
 
+function toggleEditingStatus() {
+  editingStatus.value = editingStatus.value === "published" ? "draft" : "published";
+  message.value = editingStatus.value === "published"
+    ? "已切換為公開，按下儲存後才會寫入。"
+    : "已切換為草稿，按下儲存後才會寫入。";
+}
+
 function buildPayload() {
   const payload = {
     grade_id: form.grade_id,
@@ -755,8 +875,8 @@ function buildPayload() {
     answer_md: form.answer_md.trim(),
     solution_md: form.solution_md.trim(),
     thinking: splitThinking(form.thinking),
-    status: "draft",
-    visibility: "public",
+    status: selectedId.value ? editingStatus.value : "draft",
+    visibility: selectedId.value ? editingVisibility.value : "public",
     assets: form.assets.filter(hasAssetContent).map(normalizeAsset),
   };
 
@@ -815,7 +935,11 @@ async function saveQuestion() {
     saving.value = false;
     return;
   }
-  message.value = selectedId.value ? "正在儲存草稿..." : "正在新增草稿...";
+  message.value = selectedId.value
+    ? editingStatus.value === "published"
+      ? "正在儲存並保持公開..."
+      : "正在儲存草稿..."
+    : "正在新增草稿...";
 
   const result = selectedId.value
     ? await updateStaffMathBankQuestion(selectedId.value, buildPayload(), {
@@ -831,22 +955,26 @@ async function saveQuestion() {
   }
 
   const savedQuestion = result.data || {};
+  const savedStatus = savedQuestion.status || editingStatus.value;
   rememberQuestionSource(savedQuestion.question_source || form.question_source);
-  await loadDrafts();
-  if (wasEditing && savedQuestion.id) {
-    const refreshedQuestion = drafts.value.find((question) => question.id === savedQuestion.id);
-    selectDraft(refreshedQuestion || savedQuestion);
-  } else {
-    startCreate();
-    lastCreatedId.value = savedQuestion.id || savedQuestion.uuid || "";
-  }
+  startCreate();
+  emit("saved", savedQuestion);
   saving.value = false;
   status.value = "success";
-  message.value = wasEditing ? "草稿已儲存。" : "草稿已新增，表單已清空。";
+  message.value = wasEditing
+    ? savedStatus === "published"
+      ? "題目已儲存，並保持公開。"
+      : "草稿已儲存。"
+    : "草稿已新增，表單已清空。";
 }
 
 async function deleteQuestion() {
   if (!selectedId.value) return;
+  if (editingStatus.value === "published") {
+    status.value = "error";
+    message.value = "公開題目不能刪除，請先切換為草稿並儲存。";
+    return;
+  }
   if (!window.confirm("確定要刪除這題草稿嗎？")) return;
 
   saving.value = true;
@@ -1092,6 +1220,44 @@ function getSaveError(result) {
 </script>
 
 <style scoped>
+.question-entry-editor {
+  position: relative;
+}
+
+.question-entry-loading-overlay {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #202124;
+  text-align: center;
+  backdrop-filter: blur(2px);
+}
+
+.question-entry-loading-overlay > span:last-child {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.question-entry-loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 4px solid #d9e2ec;
+  border-top-color: #153f67;
+  border-radius: 50%;
+  animation: question-entry-spin 0.8s linear infinite;
+}
+
+@keyframes question-entry-spin {
+  to { transform: rotate(360deg); }
+}
+
 .question-source-field {
   display: grid;
   gap: 6px;

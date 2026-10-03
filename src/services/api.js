@@ -1,6 +1,12 @@
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD
+import {
+  checkHandwritingCancelled,
+  getHandwritingSource,
+} from "./handwriting.js";
+import { applyImageOverlaysToPdf } from "./handwritingImageOverlays.js";
+
+export const API_URL =
+  import.meta.env?.VITE_API_URL ||
+  (import.meta.env?.PROD
     ? "https://sunnytseng.com/api"
     : "http://127.0.0.1:8000/api");
 const CDN_BASE_URL = "https://assets.sunnytseng.com";
@@ -443,89 +449,300 @@ export async function processAiText({ text }) {
   }
 }
 
-export async function removeHandwriting({
+function handwritingErrorMessage(result, fallback) {
+  if (result?.error || result?.detail) return result.error || result.detail;
+  const fieldError = Object.entries(result || {})
+    .find(([key, value]) => key !== "success" && key !== "code" && value);
+  return fieldError
+    ? `${fieldError[0]}: ${Array.isArray(fieldError[1]) ? fieldError[1].join("、") : String(fieldError[1])}`
+    : fallback;
+}
+
+function handwritingFailure(error, fallback) {
+  return {
+    success: false,
+    error: error?.message || fallback,
+    status: error?.status || 0,
+    ...(error?.code ? { code: error.code } : {}),
+    ...(error?.name === "AbortError" ? { cancelled: true } : {}),
+  };
+}
+
+function handwritingOptions(options) {
+  const manualRegions = Array.isArray(options.manualRegions) ? options.manualRegions : [];
+  const restores = Array.isArray(options.restoreRegions) ? options.restoreRegions : [];
+  return {
+    ...options,
+    colorMode: options.autoRemove === false ? "manual_only" : options.colorMode || "exam_auto",
+    // The shared backend applies erase/restore regions in order in one array.
+    manualRegions: [...manualRegions, ...restores.map((region) => ({ ...region, action: "restore" }))],
+  };
+}
+
+function handwritingPageRegions(regions, pageNumber) {
+  return regions
+    .filter((region) => Number(region.page || 1) === pageNumber)
+    .map((region) => ({ ...region, page: 1 }));
+}
+
+async function requestHandwritingPage({
   file,
-  colorMode = "exam_auto",
-  outputFormat = "pdf",
-  strength = 3,
-  manualRegions = [],
-}) {
+  colorMode,
+  outputFormat,
+  strength,
+  manualRegions,
+  authToken,
+  signal,
+  pageNumber,
+}, preview) {
+  checkHandwritingCancelled(signal);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, 25000);
   const formData = new FormData();
   formData.append("file", file);
   formData.append("color_mode", colorMode);
-  formData.append("output_format", outputFormat);
   formData.append("strength", String(strength));
+  formData.append("page_number", "1");
+  if (outputFormat) formData.append("output_format", outputFormat);
+  if (preview) formData.append("max_pages", "1");
   if (manualRegions.length) {
     formData.append("manual_regions", JSON.stringify(manualRegions));
   }
 
   try {
-    const response = await fetch(`${API_URL}/pdf/remove-handwriting/`, {
+    const response = await fetch(`${API_URL}/pdf/public-handwriting/${preview ? "preview" : "remove"}/`, {
       method: "POST",
-      headers: getAuthHeaders(),
+      headers: {},
       body: formData,
+      signal: controller.signal,
     });
+    if (preview) {
+      const result = await parseJson(response);
+      if (!response.ok || !result.success) {
+        const error = new Error(handwritingErrorMessage(result, "筆跡預覽失敗"));
+        error.status = response.status;
+        error.code = result.code;
+        throw error;
+      }
+      if (result.pages?.length !== 1 || Number(result.pages[0].page) !== 1 ||
+          Number(result.page_count || 1) !== 1) {
+        throw new Error("逐頁預覽回傳了非預期的頁數或頁碼。");
+      }
+      return { ...result.pages[0], page: pageNumber };
+    }
+
     const contentType = response.headers.get("content-type") || "";
     const isFile =
       contentType.includes("application/pdf") || contentType.startsWith("image/");
-
     if (response.ok && isFile) {
+      if (Number(response.headers.get("x-source-pages") || 1) !== 1 ||
+          Number(response.headers.get("x-processed-pages") || 1) !== 1) {
+        throw new Error("逐頁匯出回傳了非預期的頁數。");
+      }
       const blob = await response.blob();
       return {
-        success: true,
         blob,
-        filename: getDownloadFilename(response, "cleaned-document.pdf"),
+        filename: getDownloadFilename(response,
+          contentType.includes("application/pdf") ? "cleaned-document.pdf" : "cleaned-document.png"),
+        maskRatio: Number(response.headers.get("x-handwriting-mask-ratio") || 0),
       };
     }
 
     const result = await parseJson(response);
+    const error = new Error(handwritingErrorMessage(result, "筆跡去除服務沒有回傳可下載的檔案。"));
+    error.status = response.status;
+    error.code = result.code;
+    throw error;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      if (signal?.aborted) checkHandwritingCancelled(signal);
+      throw new Error(`第 ${pageNumber} 頁處理逾時，請稍後再試或縮小檔案。`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+export async function removeHandwriting({
+  file,
+  colorMode = "exam_auto",
+  outputFormat = "pdf",
+  strength = 2,
+  manualRegions = [],
+  restoreRegions = [],
+  autoRemove,
+  imageOverlays = [],
+  authToken,
+  signal,
+  onProgress,
+}) {
+  try {
+    const options = handwritingOptions({
+      colorMode, strength, manualRegions, restoreRegions, autoRemove,
+      outputFormat, authToken, signal,
+    });
+    const source = await getHandwritingSource(file, { signal });
+    let merged;
+    if (source.pageCount > 1) {
+      const { PDFDocument } = await import("pdf-lib");
+      merged = await PDFDocument.create();
+    }
+    let first;
+    let ratio = 0;
+    for (let pageNumber = 1; pageNumber <= source.pageCount; pageNumber += 1) {
+      checkHandwritingCancelled(signal);
+      const result = await requestHandwritingPage({
+        ...options,
+        file: await source.getPageFile(pageNumber),
+        pageNumber,
+        manualRegions: handwritingPageRegions(options.manualRegions, pageNumber),
+      }, false);
+      checkHandwritingCancelled(signal);
+      first ||= result;
+      ratio += result.maskRatio;
+      if (merged) {
+        const { PDFDocument } = await import("pdf-lib");
+        const document = await PDFDocument.load(await result.blob.arrayBuffer());
+        if (document.getPageCount() !== 1) throw new Error("逐頁匯出回傳了非預期的頁數。");
+        const [page] = await merged.copyPages(document, [0]);
+        merged.addPage(page);
+      }
+      onProgress?.(pageNumber, source.pageCount);
+    }
+    checkHandwritingCancelled(signal);
+    const blob = merged
+      ? new Blob([await merged.save()], { type: "application/pdf" })
+      : first.blob;
     return {
-      success: false,
-      error: getAuthError(response, result, "筆跡去除失敗"),
-      status: response.status,
+      success: true,
+      blob: await applyImageOverlaysToPdf(blob, imageOverlays, signal),
+      filename: first.filename,
+      pageCount: source.pageCount,
+      maskRatio: ratio / source.pageCount,
+      mask_ratio: ratio / source.pageCount,
     };
   } catch (error) {
-    console.error("removeHandwriting failed", error);
-    return { success: false, error: "無法連線至筆跡去除服務", status: 0 };
+    return handwritingFailure(error, "無法連線至筆跡去除服務");
   }
 }
 
 export async function previewHandwriting({
   file,
   colorMode = "exam_auto",
-  strength = 3,
+  strength = 2,
   manualRegions = [],
-  maxPages = 20,
+  restoreRegions = [],
+  autoRemove,
+  maxPages = 80,
+  pageNumber,
+  authToken,
+  signal,
+  onProgress,
 }) {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("color_mode", colorMode);
-  formData.append("strength", String(strength));
-  formData.append("max_pages", String(maxPages));
-  if (manualRegions.length) {
-    formData.append("manual_regions", JSON.stringify(manualRegions));
-  }
-
   try {
-    const response = await fetch(`${API_URL}/pdf/preview-handwriting/`, {
-      method: "POST",
-      headers: getAuthHeaders(),
-      body: formData,
+    const options = handwritingOptions({
+      colorMode, strength, manualRegions, restoreRegions, autoRemove, authToken, signal,
+    });
+    const source = await getHandwritingSource(file, { signal, maxPages });
+    if (pageNumber !== undefined && (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > source.pageCount)) {
+      throw new Error("指定頁碼超出文件範圍。");
+    }
+    const pageNumbers = pageNumber === undefined
+      ? Array.from({ length: source.pageCount }, (_, index) => index + 1)
+      : [pageNumber];
+    const pages = [];
+    for (const number of pageNumbers) {
+      checkHandwritingCancelled(signal);
+      const regions = handwritingPageRegions(options.manualRegions, number);
+      const page = await requestHandwritingPage({
+        ...options,
+        file: await source.getPageFile(number),
+        pageNumber: number,
+        manualRegions: regions,
+      }, true);
+      checkHandwritingCancelled(signal);
+      pages.push(page);
+      onProgress?.(number, source.pageCount, [...pages]);
+    }
+    return { success: true, pages, pageCount: source.pageCount };
+  } catch (error) {
+    return handwritingFailure(error, "無法連線至筆跡預覽服務");
+  }
+}
+
+export async function repairHandwritingImage({
+  image,
+  instructions = "",
+  authToken,
+  signal,
+  onProgress,
+}) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(abort, 330000);
+  const request = async (path, options = {}) => {
+    const response = await fetch(`${API_URL}/pdf/public-handwriting/image-repair/jobs/${path}`, {
+      ...options,
+      headers: {},
+      signal: controller.signal,
     });
     const result = await parseJson(response);
-
-    if (response.ok && result.success) {
-      return { success: true, pages: result.pages || [] };
+    if (!response.ok || !result.success) {
+      const error = new Error(handwritingErrorMessage(result, "圖片修復失敗。"));
+      error.status = response.status;
+      error.code = result.code;
+      throw error;
     }
-
-    return {
-      success: false,
-      error: getAuthError(response, result, "筆跡預覽失敗"),
-      status: response.status,
+    return result.job;
+  };
+  const pause = () => new Promise((resolve, reject) => {
+    const done = () => {
+      controller.signal.removeEventListener("abort", cancel);
+      resolve();
     };
+    const waitTimer = setTimeout(done, 1500);
+    const cancel = () => {
+      clearTimeout(waitTimer);
+      controller.signal.removeEventListener("abort", cancel);
+      reject(new DOMException("Cancelled", "AbortError"));
+    };
+    if (controller.signal.aborted) cancel();
+    else controller.signal.addEventListener("abort", cancel, { once: true });
+  });
+  try {
+    checkHandwritingCancelled(signal);
+    if (!image) throw new Error("請先框選需要修復的圖片。");
+    const form = new FormData();
+    form.append("image", image, "crop.png");
+    form.append("instructions", instructions);
+    let job = await request("", { method: "POST", body: form });
+    if (!job?.id) throw new Error("未收到圖片修復工作編號。");
+    const id = job.id;
+    while (job.status === "queued" || job.status === "running") {
+      onProgress?.(job.status === "queued" ? "圖片修復排隊中…" : "正在修復框選圖片…");
+      await pause();
+      job = await request(`${encodeURIComponent(id)}/`);
+    }
+    if (job.status !== "success" || !job.image?.startsWith("data:image/png;base64,")) {
+      throw new Error(job.error || "未收到可用的修復圖片。");
+    }
+    checkHandwritingCancelled(signal);
+    return { success: true, image: job.image };
   } catch (error) {
-    console.error("previewHandwriting failed", error);
-    return { success: false, error: "無法連線至筆跡預覽服務", status: 0 };
+    if (error.name === "AbortError") {
+      return { success: false, cancelled: Boolean(signal?.aborted), error: signal?.aborted
+        ? "已停止等待修復。" : "圖片修復逾時，請稍後重試。", status: 0 };
+    }
+    return handwritingFailure(error, "無法連線至圖片修復服務。");
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
   }
 }
 

@@ -146,7 +146,8 @@
           v-for="question in questions"
           :key="question.id"
           class="question-editor-result-card question-picker-card"
-          :class="{ active: isSelected(question.id) }"
+          :class="{ active: isSelected(question.id), 'focus-target': focusedQuestionId === question.id }"
+          :data-question-id="question.id"
         >
           <header>
             <div class="question-bank-meta">
@@ -155,14 +156,23 @@
               <span>{{ formatQuestionDifficulty(question.difficulty) }}</span>
               <span v-if="question.question_source">來源：{{ question.question_source }}</span>
             </div>
-            <label class="question-picker-check">
-              <input
-                type="checkbox"
-                :checked="isSelected(question.id)"
-                @change="toggleQuestion(question)"
-              />
-              <span>選取</span>
-            </label>
+            <div class="question-picker-actions">
+              <label class="question-picker-check">
+                <input
+                  type="checkbox"
+                  :checked="isSelected(question.id)"
+                  @change="toggleQuestion(question)"
+                />
+                <span>選取</span>
+              </label>
+              <button
+                class="ghost-button compact"
+                type="button"
+                @click="emit('edit-question', question.id)"
+              >
+                編輯題目
+              </button>
+            </div>
           </header>
 
           <section class="question-editor-preview-block prompt">
@@ -220,8 +230,12 @@
 </template>
 
 <script setup>
-const props = defineProps({ subject: { type: String, default: "math" } });
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+const props = defineProps({
+  subject: { type: String, default: "math" },
+  focusQuestion: { type: Object, default: null },
+});
+const emit = defineEmits(["edit-question"]);
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
 import {
@@ -233,6 +247,9 @@ import {
 } from "../services/api";
 
 const pageSize = 50;
+const defaultStaffApiKey =
+  import.meta.env.VITE_STAFF_API_KEY ||
+  "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 const examNames = {
   elementary_exam_paper: "國小段考卷",
   junior_exam_paper: "國中段考卷",
@@ -274,6 +291,7 @@ const hasMore = ref(false);
 const nextCursor = ref("");
 const status = ref("idle");
 const message = ref("");
+const focusedQuestionId = ref("");
 const filters = reactive({
   search: "",
   grade_id: "",
@@ -282,6 +300,7 @@ const filters = reactive({
   question_source: "",
 });
 let loadTimer = null;
+let focusTimer = null;
 
 const filteredUnits = computed(() =>
   filters.grade_id
@@ -295,9 +314,21 @@ onMounted(async () => {
   await loadQuestions();
 });
 
+onActivated(() => {
+  if (props.focusQuestion?.id) focusSavedQuestion(props.focusQuestion);
+});
+
 onBeforeUnmount(() => {
   if (loadTimer) window.clearTimeout(loadTimer);
+  if (focusTimer) window.clearTimeout(focusTimer);
 });
+
+watch(
+  () => props.focusQuestion,
+  (question) => {
+    if (question?.id) focusSavedQuestion(question);
+  },
+);
 
 async function loadTaxonomy() {
   const [gradeResult, unitResult, sourceResult] = await Promise.all([
@@ -341,6 +372,29 @@ async function loadQuestions() {
   message.value = `已讀取 ${questions.value.length} 題。`;
 }
 
+async function focusSavedQuestion(updatedQuestion) {
+  const questionId = updatedQuestion.id;
+  const questionIndex = questions.value.findIndex((question) => question.id === questionId);
+  if (questionIndex >= 0) {
+    const nextQuestions = [...questions.value];
+    nextQuestions[questionIndex] = updatedQuestion;
+    questions.value = nextQuestions;
+  } else {
+    questions.value = [updatedQuestion, ...questions.value];
+  }
+
+  await nextTick();
+  const card = document.querySelector(`[data-question-id="${questionId}"]`);
+  if (!card) return;
+  focusedQuestionId.value = questionId;
+  card.scrollIntoView({ behavior: "auto", block: "center" });
+  if (focusTimer) window.clearTimeout(focusTimer);
+  focusTimer = window.setTimeout(() => {
+    focusedQuestionId.value = "";
+    focusTimer = null;
+  }, 2200);
+}
+
 async function loadMore() {
   if (!hasMore.value || loadingMore.value) return;
   loadingMore.value = true;
@@ -368,7 +422,7 @@ function fetchQuestionPage(cursor) {
       limit: pageSize,
       cursor,
     },
-    { subject: props.subject },
+    { subject: props.subject, apiKey: defaultStaffApiKey },
   );
 }
 
