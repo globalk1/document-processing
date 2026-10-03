@@ -10,7 +10,7 @@
       </div>
     </header>
 
-    <nav v-if="activePage !== 'pdf'" class="subject-switcher" aria-label="題庫科目">
+    <nav v-if="['entry', 'picker'].includes(activePage)" class="subject-switcher" aria-label="題庫科目">
       <button v-for="[id, label] in subjects" :key="id" type="button"
         :aria-pressed="subject === id" @click="subject = id">
         <strong>{{ label }}</strong><small>{{ label }}題庫</small>
@@ -48,11 +48,23 @@
         <span class="tab-icon">PDF</span>
         <span>PDF 編輯</span>
       </button>
+      <button class="tab-button" :class="{ active: activePage === 'handwriting' }"
+        type="button" :aria-current="activePage === 'handwriting' ? 'page' : undefined"
+        @click="activePage = 'handwriting'">
+        <span class="tab-icon">擦</span>
+        <span>試卷擦除</span>
+      </button>
+      <button class="tab-button" :class="{ active: activePage === 'ocr' }"
+        type="button" :aria-current="activePage === 'ocr' ? 'page' : undefined" @click="activePage = 'ocr'">
+        <span class="tab-icon">文</span><span>文字解析</span>
+      </button>
     </nav>
 
     <KeepAlive>
-      <component v-if="activePage !== 'pdf'" :is="activePage === 'entry' ? DraftQuestionEntry : QuestionBankPicker"
+      <component v-if="['entry', 'picker'].includes(activePage)" :is="activePage === 'entry' ? DraftQuestionEntry : QuestionBankPicker"
         :key="`${subject}-${activePage}`" :subject="subject" @copy="copyText" />
+      <HandwritingWorkspace v-else-if="activePage === 'handwriting'" />
+      <OcrWorkspace v-else-if="activePage === 'ocr'" />
     </KeepAlive>
     <PdfEditorWorkspace v-if="activePage === 'pdf'" />
     <div v-if="copyMessage" class="copy-toast">{{ copyMessage }}</div>
@@ -65,6 +77,8 @@ import DraftQuestionEntry from "./components/DraftQuestionEntry.vue";
 import QuestionBankPicker from "./components/QuestionBankPicker.vue";
 
 const PdfEditorWorkspace = defineAsyncComponent(() => import("./components/PdfEditorWorkspace.vue"));
+const HandwritingWorkspace = defineAsyncComponent(() => import("./components/HandwritingWorkspace.vue"));
+const OcrWorkspace = defineAsyncComponent(() => import("./components/OcrWorkspace.vue"));
 
 const subjects = [["math", "數學"], ["chinese", "國文"], ["english", "英文"], ["physics", "物理"], ["chemistry", "化學"], ["biology", "生物"], ["earth_science", "地科"]];
 const subject = ref("math");
@@ -76,12 +90,16 @@ const pageTitle = computed(() => ({
   entry: "好題入題",
   picker: "題庫挑題",
   pdf: "PDF 編輯",
+  handwriting: "試卷擦除",
+  ocr: "文字解析",
 })[activePage.value]);
 
 const pageStatus = computed(() => ({
   entry: "新增草稿",
   picker: "匯出 Word",
   pdf: "瀏覽器內處理",
+  handwriting: "清除筆跡・匯出 PDF",
+  ocr: "免費 OCR・4 GB 主機",
 })[activePage.value]);
 
 async function copyText(value) {
