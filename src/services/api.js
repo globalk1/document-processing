@@ -136,7 +136,11 @@ function withQuery(path, params = {}) {
 
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
-      query.set(key, value);
+      if (Array.isArray(value)) {
+        value.filter(item => item !== undefined && item !== null && item !== "").forEach(item => query.append(key, item));
+      } else {
+        query.set(key, value);
+      }
     }
   });
 

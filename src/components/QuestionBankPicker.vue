@@ -24,50 +24,52 @@
         </label>
         <label for="question-picker-status">
           <span class="field-label">狀態</span>
-          <select id="question-picker-status" v-model="filters.status" class="select-input" @change="loadQuestions">
-            <option value="">全部狀態</option>
-            <option v-for="item in questionStatuses" :key="item.value" :value="item.value">
-              {{ item.label }}
-            </option>
-          </select>
+          <QuestionFilterSelect
+            id="question-picker-status"
+            v-model="filters.status"
+            @change="loadQuestions"
+            label="狀態"
+            :options="[{ value: '', label: '全部狀態' }, ...questionStatuses.map(item => ({ value: item.value, label: item.label }))]"
+          />
         </label>
         <div class="filter-grid two">
           <label>
             <span class="field-label">年級</span>
-            <select v-model="filters.grade_id" class="select-input" @change="handleGradeChange">
-              <option value="">全部</option>
-              <option v-for="grade in grades" :key="grade.id" :value="grade.id">
-                {{ grade.name }}
-              </option>
-            </select>
+            <QuestionFilterSelect
+              v-model="filters.grade_id"
+              @change="handleGradeChange"
+              label="年級"
+              :options="[{ value: '', label: '全部年級' }, ...grades.map(grade => ({ value: grade.id, label: grade.name }))]"
+            />
           </label>
           <label>
             <span class="field-label">單元</span>
-            <select
+            <QuestionFilterSelect
               v-model="filters.unit_id"
-              class="select-input"
               :disabled="!filteredUnits.length"
               @change="loadQuestions"
-            >
-              <option value="">全部</option>
-              <option v-for="unit in filteredUnits" :key="unit.id" :value="unit.id">
-                {{ unit.name }}
-              </option>
-            </select>
+              label="單元"
+              :options="[{ value: '', label: '全部單元' }, ...filteredUnits.map(unit => ({ value: unit.id, label: unit.name }))]"
+            />
           </label>
         </div>
         <label>
           <span class="field-label">來源</span>
-          <select v-model="filters.question_source" class="select-input" @change="loadQuestions">
-            <option value="">全部來源</option>
-            <option v-for="source in questionSources" :key="source" :value="source">
-              {{ source }}
-            </option>
-          </select>
+          <QuestionFilterSelect
+            v-model="filters.question_source"
+            @change="loadQuestions"
+            label="來源"
+            :options="[{ value: '', label: '全部來源' }, ...questionSources.map(source => ({ value: source, label: source }))]"
+          />
         </label>
         <label>
           <span class="field-label">難度</span>
-          <QuestionDifficultySelect v-model="filters.difficulty" include-all @change="loadQuestions" />
+          <QuestionFilterSelect
+            v-model="filters.difficulty"
+            label="難度"
+            :options="[...questionDifficulties, { value: '', label: '全部難度' }]"
+            @change="loadQuestions"
+          />
         </label>
         <div class="draft-filter-actions">
           <button class="ghost-button compact" :disabled="loading" type="button" @click="resetFilters">
@@ -262,7 +264,8 @@ import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMoun
 import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
 import QuestionPreviewModal from "./QuestionPreviewModal.vue";
-import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
+import QuestionFilterSelect from "./QuestionFilterSelect.vue";
+import { filterMatches, reconcileUnits } from "../utils/questionFilters";
 import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
 import {
@@ -328,7 +331,7 @@ const filters = reactive({
   status: "",
   grade_id: "",
   unit_id: "",
-  difficulty: "U",
+  difficulty: "",
   question_source: "",
 });
 const {
@@ -357,9 +360,7 @@ let copyRequest = 0;
 let previewTimer = null;
 
 const filteredUnits = computed(() =>
-  filters.grade_id
-    ? units.value.filter((unit) => getUnitGradeId(unit) === filters.grade_id)
-    : units.value,
+  units.value.filter((unit) => filterMatches(filters.grade_id, getUnitGradeId(unit))),
 );
 const selectedQuestions = computed(() => Object.values(selectedMap.value));
 
@@ -424,7 +425,7 @@ async function loadQuestions() {
 
 async function focusSavedQuestion(updatedQuestion) {
   const questionId = updatedQuestion.id;
-  if (filters.status && updatedQuestion.status !== filters.status) {
+  if (!filterMatches(filters.status, updatedQuestion.status)) {
     questions.value = questions.value.filter((question) => question.id !== questionId);
     return;
   }
@@ -450,7 +451,7 @@ async function focusSavedQuestion(updatedQuestion) {
 }
 
 function handleGradeChange() {
-  filters.unit_id = "";
+  filters.unit_id = reconcileUnits(filters.unit_id, filters.grade_id, units.value, getUnitGradeId);
   loadQuestions();
 }
 
@@ -467,7 +468,7 @@ function resetFilters() {
   filters.status = "";
   filters.grade_id = "";
   filters.unit_id = "";
-  filters.difficulty = "U";
+  filters.difficulty = "";
   filters.question_source = "";
   loadQuestions();
 }

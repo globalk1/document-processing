@@ -3,7 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { h, KeepAlive, nextTick, ref } from "vue";
 import DraftQuestionEntry from "../src/components/DraftQuestionEntry.vue";
 import QuestionBankPicker from "../src/components/QuestionBankPicker.vue";
-import QuestionDifficultySelect from "../src/components/QuestionDifficultySelect.vue";
+import QuestionFilterSelect from "../src/components/QuestionFilterSelect.vue";
 
 const api = vi.hoisted(() => ({
   searchStaffMathBankQuestions: vi.fn(),
@@ -45,6 +45,13 @@ async function click(label) {
   await settle();
 }
 
+async function chooseFilter(label, value) {
+  const select = wrapper.findAllComponents(QuestionFilterSelect).find(item => item.props("label") === label);
+  await select.find("input").trigger("focus");
+  document.querySelector(`.question-filter-menu [data-value="${value}"]`).click();
+  await settle();
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
   observers = [];
@@ -80,41 +87,57 @@ for (const [name, component, selector] of [
       await settle();
     }
 
-    it("defaults to unclassified, orders downward choices as C, B, A, S and preserves filter values", async () => {
+    it("starts with a field placeholder, orders difficulty choices and preserves chosen values", async () => {
       await setup();
-      const selects = wrapper.findAllComponents(QuestionDifficultySelect);
-      expect(selects).toHaveLength(component === DraftQuestionEntry ? 2 : 1);
-      for (const select of selects) {
-        expect(select.props("modelValue")).toBe("U");
-        await select.find("button").trigger("click");
-        const options = [...document.querySelectorAll('.question-difficulty-menu [role="option"]')]
-          .filter((option) => option.dataset.value);
-        expect(options.map((option) => option.dataset.value)).toEqual(["U", "C", "B", "A", "S"]);
-        expect(options.map((option) => option.textContent.replace("✓", "").trim())).toEqual(["未分類", "C 基礎型", "B 進階型", "A 挑戰型", "S 究極型"]);
-        await select.find("button").trigger("keydown", { key: "Escape" });
-      }
-      expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("U");
-      await selects[0].find("button").trigger("click");
-      document.querySelector('.question-difficulty-menu [data-value="C"]').click();
+      const select = wrapper.findAllComponents(QuestionFilterSelect).find(item => item.props("label") === "難度");
+      expect(select.find("input").attributes("placeholder")).toBe("難度");
+      expect(select.props("modelValue")).toBe("");
+      await select.find("input").trigger("focus");
+      expect([...document.querySelectorAll('.question-filter-menu [role="option"]')].map(option => option.dataset.value)).toEqual(["U", "C", "B", "A", "S", ""]);
+      document.querySelector('.question-filter-menu [data-value="C"]').click();
       await settle();
       expect(api.searchStaffMathBankQuestions.mock.lastCall[0]).toMatchObject({ difficulty: "C", cursor: "", limit: 20 });
-      await selects[0].find("button").trigger("click");
-      document.querySelector('.question-difficulty-menu [data-value=""]').click();
-      await settle();
+      await chooseFilter("難度", "");
       expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("");
       await click("重設");
-      expect(selects[0].props("modelValue")).toBe("U");
-      expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("U");
+      expect(select.props("modelValue")).toBe("");
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("");
+    });
+
+    it("preserves multiple grades and units across search, pagination and grade changes", async () => {
+      api.listMathBankGrades.mockResolvedValue({ success: true, data: [{ id: 'g1', name: '國一' }, { id: 'g2', name: '國二' }] });
+      api.listMathBankUnits.mockResolvedValue({ success: true, data: [{ id: 'u1', name: '單元一', grade_id: 'g1' }, { id: 'u2', name: '單元二', grade_id: 'g2' }] });
+      await setup();
+      const field = label => wrapper.findAllComponents(QuestionFilterSelect).find(item => item.props('label') === label).find('input');
+      await field('年級').trigger('focus');
+      await field('年級').trigger('keydown', { key: 'Enter', shiftKey: true });
+      document.querySelector('.question-filter-menu [data-value="g1"]').click(); await settle();
+      document.querySelector('.question-filter-menu [data-value="g2"]').click(); await settle();
+      await field('年級').trigger('keydown', { key: 'Escape' });
+      await field('單元').setValue('單元');
+      await field('單元').trigger('keydown', { key: 'Enter', shiftKey: true });
+      document.querySelector('.question-filter-menu [data-value="u1"]').click(); await settle();
+      document.querySelector('.question-filter-menu [data-value="u2"]').click(); await settle();
+      expect(field('單元').element.value).toBe('單元');
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0]).toMatchObject({ grade_id: ['g1', 'g2'], unit_id: ['u1', 'u2'], cursor: '' });
+      intersect(); await settle();
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0]).toMatchObject({ grade_id: ['g1', 'g2'], unit_id: ['u1', 'u2'], cursor: 'next-page' });
+      await field('單元').trigger('keydown', { key: 'Escape' });
+      await field('年級').trigger('focus');
+      document.querySelector('.question-filter-menu [data-value="g1"]').click(); await settle();
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0]).toMatchObject({ grade_id: ['g2'], unit_id: ['u2'], cursor: '' });
     });
 
     if (component === QuestionBankPicker) {
       it.each(["draft", "published", "archived"])("filters by %s and preserves the status on subsequent 20-question pages", async (status) => {
         await setup();
-        expect(wrapper.find("#question-picker-status").findAll("option").map((option) => option.text())).toEqual(["全部狀態", "草稿", "公開", "封存"]);
+        await wrapper.find("#question-picker-status").trigger("focus");
+        expect([...document.querySelectorAll(".question-filter-menu [role=option]")].map(option => option.textContent)).toEqual(["全部狀態", "草稿", "公開", "封存"]);
+        await wrapper.find("#question-picker-status").trigger("keydown", { key: "Escape" });
         intersect();
         await settle();
         expect(api.searchStaffMathBankQuestions.mock.calls[1][0].cursor).toBe("next-page");
-        await wrapper.find("#question-picker-status").setValue(status);
+        await chooseFilter("狀態", status);
         await settle();
         expect(api.searchStaffMathBankQuestions.mock.calls[2][0]).toMatchObject({ status, cursor: "", limit: 20 });
         expect(wrapper.findAll(selector)).toHaveLength(20);
@@ -126,7 +149,7 @@ for (const [name, component, selector] of [
       it("defaults to all statuses and restores that choice when resetting filters", async () => {
         await setup();
         expect(api.searchStaffMathBankQuestions.mock.calls[0][0].status).toBe("");
-        await wrapper.find("#question-picker-status").setValue("draft");
+        await chooseFilter("狀態", "draft");
         await settle();
         await click("重設");
         expect(wrapper.find("#question-picker-status").element.value).toBe("");
@@ -135,7 +158,7 @@ for (const [name, component, selector] of [
 
       it("keeps saved questions outside the chosen status out of the filtered list", async () => {
         await setup();
-        await wrapper.find("#question-picker-status").setValue("draft");
+        await chooseFilter("狀態", "draft");
         await settle();
         await wrapper.setProps({ focusQuestion: { id: "question-0", status: "published", prompt_md: "已公開" } });
         await settle();

@@ -222,7 +222,8 @@ describe("cancel editing from the question bank", () => {
     await setup();
     expect(wrapper.findAll("button").some((button) => button.text() === "取消")).toBe(false);
     await tab("題庫挑題");
-    await wrapper.find("#question-picker-status").setValue("published");
+    await wrapper.find("#question-picker-status").trigger("focus");
+    document.querySelector('.question-filter-menu [data-value="published"]').click();
     await settle();
     await wrapper.find('[data-question-id="question-0"] input[type="checkbox"]').setValue(true);
     const observer = observers.findLast((item) => item.connected && !item.options.root);
@@ -245,7 +246,7 @@ describe("cancel editing from the question bank", () => {
 
     expect(wrapper.find("h1").text()).toBe("題庫挑題");
     expect(window.scrollTo).toHaveBeenLastCalledWith({ left: 0, top: 1750, behavior: "instant" });
-    expect(wrapper.find("#question-picker-status").element.value).toBe("published");
+    expect(wrapper.find("#question-picker-status").element.value).toBe("公開");
     expect(wrapper.findAll(".question-picker-card")).toHaveLength(40);
     expect(wrapper.find('[data-question-id="question-0"] input[type="checkbox"]').element.checked).toBe(true);
     expect(wrapper.find('[data-question-id="question-27"] math-text-stub').attributes("content")).toBe("原本題目 27");

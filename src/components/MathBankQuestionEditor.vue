@@ -30,42 +30,41 @@
         <div class="filter-grid two">
           <label>
             <span class="field-label">年級</span>
-            <select
+            <QuestionFilterSelect
               v-model="filters.grade_id"
-              class="select-input"
               @change="handleFilterGradeChange"
-            >
-              <option :value="filterNoneValue">請選擇</option>
-              <option :value="filterAllValue">全部年級</option>
-              <option v-for="grade in grades" :key="grade.id" :value="grade.id">
-                {{ grade.name }}
-              </option>
-            </select>
+              label="年級"
+              :options="[{ value: filterAllValue, label: '全部年級' }, ...grades.map(grade => ({ value: grade.id, label: grade.name }))]"
+            />
           </label>
           <label>
             <span class="field-label">單元</span>
-            <select v-model="filters.unit_id" class="select-input" @change="loadQuestions">
-              <option :value="filterNoneValue">請選擇</option>
-              <option :value="filterAllValue">全部單元</option>
-              <option v-for="unit in filteredFilterUnits" :key="unit.id" :value="unit.id">
-                {{ unit.name }}
-              </option>
-            </select>
+            <QuestionFilterSelect
+              v-model="filters.unit_id"
+              @change="loadQuestions"
+              label="單元"
+              :options="[{ value: filterAllValue, label: '全部單元' }, ...filteredFilterUnits.map(unit => ({ value: unit.id, label: unit.name }))]"
+            />
           </label>
         </div>
         <div class="filter-grid two">
           <label>
             <span class="field-label">難度</span>
-            <QuestionDifficultySelect v-model="filters.difficulty" include-all @change="loadQuestions" />
+            <QuestionFilterSelect
+              v-model="filters.difficulty"
+              label="難度"
+              :options="[...questionDifficulties, { value: '', label: '全部難度' }]"
+              @change="loadQuestions"
+            />
           </label>
           <label>
             <span class="field-label">狀態</span>
-            <select v-model="filters.status" class="select-input" @change="loadQuestions">
-              <option value="">全部狀態</option>
-              <option value="draft">草稿</option>
-              <option value="published">已發布</option>
-              <option value="archived">封存</option>
-            </select>
+            <QuestionFilterSelect
+              v-model="filters.status"
+              @change="loadQuestions"
+              label="狀態"
+              :options="[{ value: '', label: '全部狀態' }, { value: 'draft', label: '草稿' }, { value: 'published', label: '已發布' }, { value: 'archived', label: '封存' }]"
+            />
           </label>
         </div>
         <div class="editor-action-row">
@@ -648,6 +647,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MathText from "./MathText.vue";
 import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
+import QuestionFilterSelect from "./QuestionFilterSelect.vue";
+import { filterMatches, filterParam, reconcileUnits, singleFilterValue } from "../utils/questionFilters";
 import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import {
   createStaffMathBankQuestion,
@@ -731,8 +732,8 @@ const filters = reactive({
   search: "",
   grade_id: filterNoneValue,
   unit_id: filterNoneValue,
-  difficulty: "U",
-  status: "draft",
+  difficulty: "",
+  status: "",
 });
 const questionForm = reactive(createEmptyQuestionForm());
 
@@ -740,7 +741,7 @@ const hasStaffApiKey = computed(() => Boolean(localStaffApiKey.value.trim()));
 const filteredFilterUnits = computed(() => {
   if (filters.grade_id === filterNoneValue) return [];
   if (filters.grade_id === filterAllValue) return units.value;
-  return units.value.filter((unit) => getUnitGradeId(unit) === filters.grade_id);
+  return units.value.filter((unit) => filterMatches(filters.grade_id, getUnitGradeId(unit)));
 });
 const filteredFormUnits = computed(() =>
   questionForm.grade_id
@@ -840,21 +841,15 @@ function scheduleSearch() {
 }
 
 function handleFilterGradeChange() {
-  filters.unit_id = filters.grade_id === filterNoneValue ? filterNoneValue : filterAllValue;
+  filters.unit_id = reconcileUnits(filters.unit_id, filters.grade_id, units.value, getUnitGradeId, filterAllValue);
   loadQuestions();
 }
 
 function getSearchParams(cursor = "") {
   return {
     search: filters.search.trim(),
-    grade_id:
-      filters.grade_id === filterNoneValue || filters.grade_id === filterAllValue
-        ? ""
-        : filters.grade_id,
-    unit_id:
-      filters.unit_id === filterNoneValue || filters.unit_id === filterAllValue
-        ? ""
-        : filters.unit_id,
+    grade_id: filterParam(filters.grade_id),
+    unit_id: filterParam(filters.unit_id),
     difficulty: filters.difficulty,
     status: filters.status,
     include_details: "true",
@@ -966,8 +961,8 @@ function resetFilters() {
   filters.search = "";
   filters.grade_id = filterNoneValue;
   filters.unit_id = filterNoneValue;
-  filters.difficulty = "U";
-  filters.status = "draft";
+  filters.difficulty = "";
+  filters.status = "";
   clearQuestions();
   status.value = "idle";
   message.value = "";
@@ -1020,14 +1015,8 @@ function resetQuestionForm() {
   importedJsonFilename.value = "";
   importedJsonSelectedIndex.value = 0;
   Object.assign(questionForm, createEmptyQuestionForm(), {
-    grade_id:
-      filters.grade_id === filterNoneValue || filters.grade_id === filterAllValue
-        ? ""
-        : filters.grade_id,
-    unit_id:
-      filters.unit_id === filterNoneValue || filters.unit_id === filterAllValue
-        ? ""
-        : filters.unit_id,
+    grade_id: singleFilterValue(filters.grade_id),
+    unit_id: singleFilterValue(filters.unit_id),
   });
   jsonParseError.value = "";
 }

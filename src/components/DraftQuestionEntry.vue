@@ -29,31 +29,32 @@
         <div class="filter-grid two">
           <label>
             <span class="field-label">年級</span>
-            <select v-model="filters.grade_id" class="select-input" @change="handleFilterGradeChange">
-              <option value="">全部</option>
-              <option v-for="grade in grades" :key="grade.id" :value="grade.id">
-                {{ grade.name }}
-              </option>
-            </select>
+            <QuestionFilterSelect
+              v-model="filters.grade_id"
+              @change="handleFilterGradeChange"
+              label="年級"
+              :options="[{ value: '', label: '全部年級' }, ...grades.map(grade => ({ value: grade.id, label: grade.name }))]"
+            />
           </label>
           <label>
             <span class="field-label">單元</span>
-            <select
+            <QuestionFilterSelect
               v-model="filters.unit_id"
-              class="select-input"
               :disabled="!filteredFilterUnits.length"
               @change="loadDrafts"
-            >
-              <option value="">全部</option>
-              <option v-for="unit in filteredFilterUnits" :key="unit.id" :value="unit.id">
-                {{ unit.name }}
-              </option>
-            </select>
+              label="單元"
+              :options="[{ value: '', label: '全部單元' }, ...filteredFilterUnits.map(unit => ({ value: unit.id, label: unit.name }))]"
+            />
           </label>
         </div>
         <label>
           <span class="field-label">難度</span>
-          <QuestionDifficultySelect v-model="filters.difficulty" include-all @change="loadDrafts" />
+          <QuestionFilterSelect
+            v-model="filters.difficulty"
+            label="難度"
+            :options="[...questionDifficulties, { value: '', label: '全部難度' }]"
+            @change="loadDrafts"
+          />
         </label>
         <div class="draft-filter-actions">
           <button class="ghost-button compact" :disabled="loading" type="button" @click="resetFilters">
@@ -468,6 +469,8 @@ const emit = defineEmits(["copy", "saved", "cancel"]);
 import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MarkdownMathText from "./MarkdownMathText.vue";
 import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
+import QuestionFilterSelect from "./QuestionFilterSelect.vue";
+import { filterMatches, reconcileUnits } from "../utils/questionFilters";
 import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
 import {
@@ -544,7 +547,7 @@ const filters = reactive({
   search: "",
   grade_id: "",
   unit_id: "",
-  difficulty: "U",
+  difficulty: "",
 });
 const draftListRef = ref(null);
 const {
@@ -577,9 +580,7 @@ const filteredUnits = computed(() =>
     : [],
 );
 const filteredFilterUnits = computed(() =>
-  filters.grade_id
-    ? units.value.filter((unit) => getUnitGradeId(unit) === filters.grade_id)
-    : units.value,
+  units.value.filter((unit) => filterMatches(filters.grade_id, getUnitGradeId(unit))),
 );
 const filteredQuestionSources = computed(() => {
   const keyword = normalizeQuestionSource(form.question_source).toLocaleLowerCase("zh-Hant");
@@ -790,7 +791,7 @@ function cancelEditing() {
 }
 
 function handleFilterGradeChange() {
-  filters.unit_id = "";
+  filters.unit_id = reconcileUnits(filters.unit_id, filters.grade_id, units.value, getUnitGradeId);
   loadDrafts();
 }
 
@@ -806,7 +807,7 @@ function resetFilters() {
   filters.search = "";
   filters.grade_id = "";
   filters.unit_id = "";
-  filters.difficulty = "U";
+  filters.difficulty = "";
   loadDrafts();
 }
 
