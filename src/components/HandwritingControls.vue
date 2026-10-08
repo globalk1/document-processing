@@ -70,19 +70,19 @@ function addImage(event) { emit("image", event.target.files?.[0]); event.target.
 <style scoped>
 .hw-controls { display: grid; gap: 10px; padding-block: 12px; }
 .hw-toolbar, .hw-button-group, .hw-zoom, .hw-overlay-controls, .hw-selection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.hw-controls button { border: 1px solid #ccd6e0; border-radius: 7px; background: white; padding: 8px 10px; font-size: 13px; cursor: pointer; }
-.hw-controls button[aria-pressed="true"] { background: #153f67; color: white; border-color: #153f67; }
+.hw-controls button { border: 1px solid var(--theme-border, #ccd6e0); border-radius: 7px; background: var(--theme-surface, white); padding: 8px 10px; font-size: 13px; cursor: pointer; }
+.hw-controls button[aria-pressed="true"] { background: var(--theme-strong, #153f67); color: white; border-color: var(--theme-accent, #153f67); }
 .hw-controls button:disabled { opacity: .45; cursor: default; }
-.hw-controls button:focus-visible { outline: 3px solid #d3a349; outline-offset: 2px; }
+.hw-controls button:focus-visible { outline: 3px solid var(--theme-warning-border, #d3a349); outline-offset: 2px; }
 .hw-zoom span { min-width: 44px; text-align: center; font-size: 13px; }
 .hw-zoom input { width: 100px; }
-.hw-overlay-controls, .hw-hint, .hw-selection-actions { padding: 10px; border-radius: 8px; background: #f0f5f8; font-size: 13px; }
-.hw-overlay-controls select { padding: 4px; border: 1px solid #ccd6e0; border-radius: 4px; }
+.hw-overlay-controls, .hw-hint, .hw-selection-actions { padding: 10px; border-radius: 8px; background: var(--theme-surface-soft, #f0f5f8); font-size: 13px; }
+.hw-overlay-controls select { padding: 4px; border: 1px solid var(--theme-border, #ccd6e0); border-radius: 4px; }
 .hw-hint { display: grid; gap: 5px; }
-.hw-controls small { color: #5e6c7d; line-height: 1.5; }
-.hw-repair { display: grid; gap: 8px; padding: 12px; border: 1px solid #d8e2ec; border-radius: 8px; }
+.hw-controls small { color: var(--theme-muted, #5e6c7d); line-height: 1.5; }
+.hw-repair { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--theme-border, #d8e2ec); border-radius: 8px; }
 .hw-repair label { display: grid; gap: 6px; font-size: 13px; }
-.hw-repair textarea { resize: vertical; padding: 8px; width: 100%; border: 1px solid #ccd6e0; border-radius: 6px; }
+.hw-repair textarea { resize: vertical; padding: 8px; width: 100%; border: 1px solid var(--theme-border, #ccd6e0); border-radius: 6px; }
 .hw-repair button { justify-self: start; }
-.hw-image-message { margin: 0; font-size: 13px; color: #526173; }
+.hw-image-message { margin: 0; font-size: 13px; color: var(--theme-muted, #526173); }
 </style>

@@ -3,6 +3,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { h, KeepAlive, nextTick, ref } from "vue";
 import DraftQuestionEntry from "../src/components/DraftQuestionEntry.vue";
 import QuestionBankPicker from "../src/components/QuestionBankPicker.vue";
+import QuestionDifficultySelect from "../src/components/QuestionDifficultySelect.vue";
 
 const api = vi.hoisted(() => ({
   searchStaffMathBankQuestions: vi.fn(),
@@ -77,6 +78,73 @@ for (const [name, component, selector] of [
         global: { stubs: { MarkdownMathText: true, MathText: true, QuestionAssetThumbnail: true, VimMarkdownEditor: true } },
       });
       await settle();
+    }
+
+    it("defaults to unclassified, orders downward choices as C, B, A, S and preserves filter values", async () => {
+      await setup();
+      const selects = wrapper.findAllComponents(QuestionDifficultySelect);
+      expect(selects).toHaveLength(component === DraftQuestionEntry ? 2 : 1);
+      for (const select of selects) {
+        expect(select.props("modelValue")).toBe("U");
+        await select.find("button").trigger("click");
+        const options = [...document.querySelectorAll('.question-difficulty-menu [role="option"]')]
+          .filter((option) => option.dataset.value);
+        expect(options.map((option) => option.dataset.value)).toEqual(["U", "C", "B", "A", "S"]);
+        expect(options.map((option) => option.textContent.replace("✓", "").trim())).toEqual(["未分類", "C 基礎型", "B 進階型", "A 挑戰型", "S 究極型"]);
+        await select.find("button").trigger("keydown", { key: "Escape" });
+      }
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("U");
+      await selects[0].find("button").trigger("click");
+      document.querySelector('.question-difficulty-menu [data-value="C"]').click();
+      await settle();
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0]).toMatchObject({ difficulty: "C", cursor: "", limit: 20 });
+      await selects[0].find("button").trigger("click");
+      document.querySelector('.question-difficulty-menu [data-value=""]').click();
+      await settle();
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("");
+      await click("重設");
+      expect(selects[0].props("modelValue")).toBe("U");
+      expect(api.searchStaffMathBankQuestions.mock.lastCall[0].difficulty).toBe("U");
+    });
+
+    if (component === QuestionBankPicker) {
+      it.each(["draft", "published", "archived"])("filters by %s and preserves the status on subsequent 20-question pages", async (status) => {
+        await setup();
+        expect(wrapper.find("#question-picker-status").findAll("option").map((option) => option.text())).toEqual(["全部狀態", "草稿", "公開", "封存"]);
+        intersect();
+        await settle();
+        expect(api.searchStaffMathBankQuestions.mock.calls[1][0].cursor).toBe("next-page");
+        await wrapper.find("#question-picker-status").setValue(status);
+        await settle();
+        expect(api.searchStaffMathBankQuestions.mock.calls[2][0]).toMatchObject({ status, cursor: "", limit: 20 });
+        expect(wrapper.findAll(selector)).toHaveLength(20);
+        intersect();
+        await settle();
+        expect(api.searchStaffMathBankQuestions.mock.calls[3][0]).toMatchObject({ status, cursor: "next-page", limit: 20 });
+      });
+
+      it("defaults to all statuses and restores that choice when resetting filters", async () => {
+        await setup();
+        expect(api.searchStaffMathBankQuestions.mock.calls[0][0].status).toBe("");
+        await wrapper.find("#question-picker-status").setValue("draft");
+        await settle();
+        await click("重設");
+        expect(wrapper.find("#question-picker-status").element.value).toBe("");
+        expect(api.searchStaffMathBankQuestions.mock.calls[2][0]).toMatchObject({ status: "", cursor: "", limit: 20 });
+      });
+
+      it("keeps saved questions outside the chosen status out of the filtered list", async () => {
+        await setup();
+        await wrapper.find("#question-picker-status").setValue("draft");
+        await settle();
+        await wrapper.setProps({ focusQuestion: { id: "question-0", status: "published", prompt_md: "已公開" } });
+        await settle();
+        expect(wrapper.findAll(selector)).toHaveLength(19);
+        expect(wrapper.find('[data-question-id="question-0"]').exists()).toBe(false);
+        await wrapper.setProps({ focusQuestion: { id: "archived-question", status: "archived" } });
+        await settle();
+        expect(wrapper.findAll(selector)).toHaveLength(19);
+      });
     }
 
     it("only fetches 20 initially, then loads at the correct scroll boundary and stops at the last page", async () => {

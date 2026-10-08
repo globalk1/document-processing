@@ -61,10 +61,10 @@ const originalCropStyle = (r) => ({ width: `${100 / r.width}%`, height: `${100 /
 </script>
 
 <style scoped>
-.hw-page { border: 1px solid #dce3e9; border-radius: 10px; overflow: hidden; background: white; }
+.hw-page { border: 1px solid var(--theme-border, #dce3e9); border-radius: 10px; overflow: hidden; background: var(--theme-surface, white); }
 .hw-page header { display: flex; align-items: center; gap: 12px; padding: 10px 14px; font-size: 13px; }
-.hw-page header span { flex: 1; color: #627181; }
-.hw-page button { border: 1px solid #ccd6e0; border-radius: 6px; background: white; padding: 6px 10px; cursor: pointer; }
+.hw-page header span { flex: 1; color: var(--theme-muted, #627181); }
+.hw-page button { border: 1px solid var(--theme-border, #ccd6e0); border-radius: 6px; background: var(--theme-surface, white); padding: 6px 10px; cursor: pointer; }
 .hw-canvas { position: relative; line-height: 0; user-select: none; }
 .hw-canvas.manual { cursor: crosshair; touch-action: none; }
 .hw-canvas.expandable { cursor: zoom-in; }
@@ -73,7 +73,7 @@ const originalCropStyle = (r) => ({ width: `${100 / r.width}%`, height: `${100 /
 .hw-result { position: absolute; display: block; overflow: hidden; background: white; pointer-events: none; }
 .hw-result img { position: absolute; max-width: none; }
 .hw-draft { position: absolute; display: block; border: 1px dashed; pointer-events: none; }
-.hw-draft.erase { border-color: #bf6037; background: #e2814826; }
-.hw-draft.restore { border-color: #238b71; background: #37a78b26; }
-.hw-canvas:focus-visible { outline: 3px solid #d3a349; outline-offset: -3px; }
+.hw-draft.erase { border-color: var(--theme-error-border, #bf6037); background: #e2814826; }
+.hw-draft.restore { border-color: var(--theme-success-border, #238b71); background: #37a78b26; }
+.hw-canvas:focus-visible { outline: 3px solid var(--theme-warning-border, #d3a349); outline-offset: -3px; }
 </style>

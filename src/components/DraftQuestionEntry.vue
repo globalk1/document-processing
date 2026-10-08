@@ -53,16 +53,7 @@
         </div>
         <label>
           <span class="field-label">難度</span>
-          <select v-model="filters.difficulty" class="select-input" @change="loadDrafts">
-            <option value="">全部</option>
-            <option
-              v-for="difficulty in questionDifficulties"
-              :key="difficulty.value"
-              :value="difficulty.value"
-            >
-              {{ difficulty.label }}
-            </option>
-          </select>
+          <QuestionDifficultySelect v-model="filters.difficulty" include-all @change="loadDrafts" />
         </label>
         <div class="draft-filter-actions">
           <button class="ghost-button compact" :disabled="loading" type="button" @click="resetFilters">
@@ -109,6 +100,7 @@
         <span class="question-entry-loading-spinner" aria-hidden="true"></span>
         <strong>正在載入題目</strong>
         <span>準備開啟編輯表單...</span>
+        <button class="secondary-button compact" :disabled="saving" type="button" @click="cancelEditing">取消</button>
       </div>
       <form class="simple-question-form" @submit.prevent="saveQuestion">
         <div class="question-bank-toolbar">
@@ -124,6 +116,9 @@
             </div>
           </div>
           <div class="icon-group">
+            <button v-if="initialQuestionId" class="secondary-button compact" :disabled="saving" type="button" @click="cancelEditing">
+              取消
+            </button>
             <button
               v-if="selectedId && editingStatus !== 'published'"
               class="ghost-button compact danger"
@@ -178,15 +173,7 @@
             </label>
             <label>
               <span class="field-label">難度</span>
-              <select v-model="form.difficulty" class="select-input">
-                <option
-                  v-for="difficulty in questionDifficulties"
-                  :key="difficulty.value"
-                  :value="difficulty.value"
-                >
-                  {{ difficulty.label }}
-                </option>
-              </select>
+              <QuestionDifficultySelect v-model="form.difficulty" />
             </label>
           </div>
 
@@ -256,25 +243,19 @@
               </button>
             </div>
             <div class="question-editor-preview-grid">
-              <section class="question-editor-preview-block prompt">
-                <strong>題目</strong>
-                <p><MarkdownMathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
-                <div v-if="previewImageAssets.some((asset) => asset.url)" class="preview-image-strip">
-                  <img
-                    v-for="(asset, index) in previewImageAssets.filter((item) => item.url)"
-                    :key="`preview-inline-${asset.storage_key || index}`"
-                    :src="asset.url"
-                    :alt="asset.alt_text || '題目圖片'"
-                  />
+              <section v-for="role in assetRoles" :key="role.value" class="question-editor-preview-block" :class="role.value">
+                <strong>{{ role.label }}</strong>
+                <div class="question-preview-body" :class="{ 'solution-preview-body': role.value === 'solution' }" :tabindex="role.value === 'solution' ? 0 : undefined" :role="role.value === 'solution' ? 'region' : undefined" :aria-label="role.value === 'solution' ? '詳解預覽內文' : undefined">
+                  <p><MarkdownMathText :content="form[`${role.value}_md`]" :fallback="getPreviewImages(role.value).length ? '' : `尚未輸入${role.label}`" /></p>
+                  <div v-if="getPreviewImages(role.value).length" class="preview-image-strip">
+                    <img
+                      v-for="(asset, index) in getPreviewImages(role.value)"
+                      :key="`preview-inline-${role.value}-${asset.storage_key || index}`"
+                      :src="asset.url"
+                      :alt="asset.alt_text || `${role.label}圖片`"
+                    />
+                  </div>
                 </div>
-              </section>
-              <section class="question-editor-preview-block answer">
-                <strong>答案</strong>
-                <p><MarkdownMathText :content="form.answer_md" fallback="尚未輸入答案" /></p>
-              </section>
-              <section class="question-editor-preview-block solution">
-                <strong>詳解</strong>
-                <p><MarkdownMathText :content="form.solution_md" fallback="尚未輸入詳解" /></p>
               </section>
             </div>
           </div>
@@ -296,8 +277,8 @@
               @change="handleImagePicker"
             />
             <div>
-              <strong>題目圖片</strong>
-              <span>選擇、拖曳或 Ctrl / Command + V 貼上圖片。</span>
+              <strong>圖片素材</strong>
+              <span>選擇、拖曳或 Ctrl / Command + V 貼上圖片，再指定題目、答案或詳解。</span>
             </div>
             <button
               class="secondary-button compact"
@@ -340,14 +321,20 @@
               :key="asset.storage_key || `image-${index}`"
               class="question-image-card"
             >
-              <img v-if="asset.url" :src="asset.url" :alt="asset.alt_text || '題目圖片'" />
+              <img v-if="asset.url" :src="asset.url" :alt="asset.alt_text || '圖片素材'" />
               <p v-else class="question-image-status">
                 {{ asset.preview_status === "loading" ? "正在向後端產生圖片..." : asset.preview_error || "圖片尚無預覽網址。" }}
               </p>
               <div>
-                <strong>{{ asset.alt_text || "題目圖片" }}</strong>
+                <strong>{{ asset.alt_text || "圖片素材" }}</strong>
                 <span>{{ asset.storage_key }}</span>
               </div>
+              <label>
+                <span class="field-label">位置</span>
+                <select :value="asset.role" class="select-input" :disabled="saving" @change="setAssetRole(asset, $event.target.value)">
+                  <option v-for="role in assetRoles" :key="role.value" :value="role.value">{{ role.label }}</option>
+                </select>
+              </label>
               <button
                 class="ghost-button compact danger"
                 type="button"
@@ -375,6 +362,9 @@
           <div class="editor-action-row">
             <button class="primary-button" :disabled="saving" type="submit">
               {{ saving ? "儲存中" : selectedId && editingStatus === "published" ? "儲存並保持公開" : selectedId ? "儲存草稿" : "新增草稿" }}
+            </button>
+            <button v-if="initialQuestionId" class="secondary-button" :disabled="saving" type="button" @click="cancelEditing">
+              取消
             </button>
             <button
               v-if="selectedId && editingStatus !== 'archived'"
@@ -446,25 +436,19 @@
             </div>
 
             <div class="preview-editor-output">
-              <section aria-live="polite">
-                <strong>題目預覽</strong>
-                <p><MarkdownMathText :content="form.prompt_md" fallback="尚未輸入題目" /></p>
-                <div v-if="previewImageAssets.some((asset) => asset.url)" class="preview-image-strip">
-                  <img
-                    v-for="(asset, index) in previewImageAssets.filter((item) => item.url)"
-                    :key="`modal-preview-${asset.storage_key || index}`"
-                    :src="asset.url"
-                    :alt="asset.alt_text || '題目圖片'"
-                  />
+              <section v-for="role in assetRoles" :key="role.value" :class="`${role.value}-preview`" aria-live="polite">
+                <strong>{{ role.label }}預覽</strong>
+                <div class="question-preview-body" :class="{ 'solution-preview-body': role.value === 'solution' }" :tabindex="role.value === 'solution' ? 0 : undefined" :role="role.value === 'solution' ? 'region' : undefined" :aria-label="role.value === 'solution' ? '詳解預覽內文' : undefined">
+                  <p><MarkdownMathText :content="form[`${role.value}_md`]" :fallback="getPreviewImages(role.value).length ? '' : `尚未輸入${role.label}`" /></p>
+                  <div v-if="getPreviewImages(role.value).length" class="preview-image-strip">
+                    <img
+                      v-for="(asset, index) in getPreviewImages(role.value)"
+                      :key="`modal-preview-${role.value}-${asset.storage_key || index}`"
+                      :src="asset.url"
+                      :alt="asset.alt_text || `${role.label}圖片`"
+                    />
+                  </div>
                 </div>
-              </section>
-              <section class="answer-preview" aria-live="polite">
-                <strong>答案預覽</strong>
-                <p><MarkdownMathText :content="form.answer_md" fallback="尚未輸入答案" /></p>
-              </section>
-              <section class="solution-preview" aria-live="polite">
-                <strong>詳解預覽</strong>
-                <p><MarkdownMathText :content="form.solution_md" fallback="尚未輸入詳解" /></p>
               </section>
             </div>
           </div>
@@ -480,9 +464,11 @@ const props = defineProps({
   subject: { type: String, default: "math" },
   initialQuestionId: { type: String, default: "" },
 });
-const emit = defineEmits(["copy", "saved"]);
+const emit = defineEmits(["copy", "saved", "cancel"]);
 import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MarkdownMathText from "./MarkdownMathText.vue";
+import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
+import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
 import {
   createStaffMathBankQuestion,
@@ -502,6 +488,11 @@ const defaultStaffApiKey =
   import.meta.env.VITE_STAFF_API_KEY ||
   "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 const goodQuestionFolder = "好題蒐集";
+const assetRoles = [
+  { value: "prompt", label: "題目" },
+  { value: "answer", label: "答案" },
+  { value: "solution", label: "詳解" },
+];
 const questionTypes = [
   { value: "choice", label: "選擇題" },
   { value: "fill", label: "填充題" },
@@ -510,13 +501,6 @@ const questionTypes = [
   { value: "application", label: "應用題" },
   { value: "short_answer", label: "簡答題" },
   { value: "essay", label: "申論題" },
-];
-const questionDifficulties = [
-  { value: "A", label: "A 挑戰型" },
-  { value: "B", label: "B 進階型" },
-  { value: "C", label: "C 基礎型" },
-  { value: "S", label: "S 究極型" },
-  { value: "U", label: "未分類" },
 ];
 
 function formatQuestionDifficulty(difficulty) {
@@ -560,7 +544,7 @@ const filters = reactive({
   search: "",
   grade_id: "",
   unit_id: "",
-  difficulty: "",
+  difficulty: "U",
 });
 const draftListRef = ref(null);
 const {
@@ -585,6 +569,7 @@ const {
 });
 const loading = computed(() => draftsLoading.value || openingQuestion.value);
 let filterTimer = null;
+let questionLoadVersion = 0;
 
 const filteredUnits = computed(() =>
   form.grade_id
@@ -622,17 +607,28 @@ const previewImageAssets = computed(() => [
       preview_error: renderState?.error || "",
     };
   }),
-  ...pendingImages.value.map((item) =>
-    normalizeAsset({
-      role: "prompt",
+  ...pendingImages.value.map((item) => ({
+    ...normalizeAsset({
+      role: item.role,
       url: item.previewUrl,
       storage_key: item.id,
       alt_text: item.alt_text,
       mime_type: item.mime_type,
       sort_order: form.assets.length + item.sort_order,
     }),
-  ),
+    sourceAsset: item,
+  })),
 ]);
+
+function getPreviewImages(role) {
+  return previewImageAssets.value
+    .filter((asset) => asset.role === role && asset.url)
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+function setAssetRole(asset, role) {
+  if (assetRoles.some((item) => item.value === role)) asset.sourceAsset.role = role;
+}
 
 async function ensureImageRendered(code) {
   if (renderedImageStates[code]?.status === "success" || pendingRenders.has(code)) return;
@@ -646,24 +642,34 @@ async function ensureImageRendered(code) {
     : { status: "error", image: "", error: result.error || "圖片產生失敗。" };
 }
 
-onActivated(() => window.addEventListener("paste", handlePaste));
+onActivated(() => {
+  window.addEventListener("paste", handlePaste);
+  if (props.initialQuestionId && selectedId.value !== props.initialQuestionId && !openingQuestion.value) openInitialQuestion();
+});
 onDeactivated(() => window.removeEventListener("paste", handlePaste));
 
 onMounted(async () => {
+  const version = questionLoadVersion;
   document.addEventListener("mousedown", handleQuestionSourceOutsideClick);
   await loadTaxonomy();
   await loadDrafts();
-  await openInitialQuestion();
+  if (version === questionLoadVersion) await openInitialQuestion();
 });
 
 watch(
   () => props.initialQuestionId,
   async (questionId, previousQuestionId) => {
+    if (!questionId) {
+      questionLoadVersion += 1;
+      openingQuestion.value = false;
+      return;
+    }
     if (questionId && questionId !== previousQuestionId) await openInitialQuestion(questionId);
   },
 );
 
 onBeforeUnmount(() => {
+  questionLoadVersion += 1;
   if (filterTimer) window.clearTimeout(filterTimer);
   document.removeEventListener("mousedown", handleQuestionSourceOutsideClick);
   window.removeEventListener("paste", handlePaste);
@@ -750,6 +756,7 @@ async function loadDrafts() {
 
 async function openInitialQuestion(questionId = props.initialQuestionId) {
   if (!questionId) return;
+  const version = ++questionLoadVersion;
   openingQuestion.value = true;
   status.value = "loading";
   message.value = "正在載入題目，準備編輯...";
@@ -758,6 +765,7 @@ async function openInitialQuestion(questionId = props.initialQuestionId) {
       subject: props.subject,
       apiKey: defaultStaffApiKey,
     });
+    if (version !== questionLoadVersion) return;
     if (!result.success) {
       status.value = "error";
       message.value = result.error || "題目讀取失敗。";
@@ -765,9 +773,20 @@ async function openInitialQuestion(questionId = props.initialQuestionId) {
     }
     selectDraft(result.data);
     message.value = "已從題庫載入題目，可直接編輯。";
+  } catch (error) {
+    if (version !== questionLoadVersion) return;
+    status.value = "error";
+    message.value = error.message || "題目讀取失敗。";
   } finally {
-    openingQuestion.value = false;
+    if (version === questionLoadVersion) openingQuestion.value = false;
   }
+}
+
+function cancelEditing() {
+  questionLoadVersion += 1;
+  openingQuestion.value = false;
+  startCreate();
+  emit("cancel");
 }
 
 function handleFilterGradeChange() {
@@ -787,7 +806,7 @@ function resetFilters() {
   filters.search = "";
   filters.grade_id = "";
   filters.unit_id = "";
-  filters.difficulty = "";
+  filters.difficulty = "U";
   loadDrafts();
 }
 
@@ -902,8 +921,8 @@ function validateForm() {
   if (!form.unit_id) return "請選擇單元。";
   if (
     !form.prompt_md.trim() &&
-    !form.assets.some(hasAssetContent) &&
-    !pendingImages.value.length
+    !form.assets.some((asset) => asset.role === "prompt" && hasAssetContent(asset)) &&
+    !pendingImages.value.some((image) => image.role === "prompt")
   ) {
     return "請輸入題目內容或上傳題目圖片。";
   }
@@ -1062,6 +1081,7 @@ function queueImages(fileList) {
   const nextImages = files.map((file, index) => ({
     id: `pending-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
     file,
+    role: "prompt",
     previewUrl: URL.createObjectURL(file),
     alt_text: stripExtension(file.name) || "題目圖片",
     mime_type: file.type || "image/png",
@@ -1095,7 +1115,7 @@ async function uploadPendingImagesBeforeSave() {
 
     uploadedAssets.push(
       normalizeAsset({
-        role: "prompt",
+        role: item.role,
         url: result.url,
         storage_key: result.key,
         alt_text: item.alt_text,
@@ -1143,10 +1163,9 @@ function normalizeAsset(asset = {}) {
 
 function hasAssetContent(asset) {
   return Boolean(
-    asset?.role === "prompt" &&
-      (String(asset.url || "").trim() ||
-        String(asset.storage_key || "").trim() ||
-        String(asset.source_code || "").trim()),
+    String(asset?.url || "").trim() ||
+      String(asset?.storage_key || "").trim() ||
+      String(asset?.source_code || "").trim(),
   );
 }
 
@@ -1224,14 +1243,14 @@ function getSaveError(result) {
   justify-items: center;
   gap: 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.88);
-  color: #202124;
+  background: var(--theme-loading-overlay, rgba(255, 255, 255, 0.88));
+  color: var(--theme-text, #202124);
   text-align: center;
   backdrop-filter: blur(2px);
 }
 
 .question-entry-loading-overlay > span:last-child {
-  color: #6b7280;
+  color: var(--theme-muted, #6b7280);
   font-size: 13px;
   font-weight: 700;
 }
@@ -1239,8 +1258,8 @@ function getSaveError(result) {
 .question-entry-loading-spinner {
   width: 30px;
   height: 30px;
-  border: 4px solid #d9e2ec;
-  border-top-color: #153f67;
+  border: 4px solid var(--theme-border, #d9e2ec);
+  border-top-color: var(--theme-accent, #153f67);
   border-radius: 50%;
   animation: question-entry-spin 0.8s linear infinite;
 }
@@ -1267,10 +1286,10 @@ function getSaveError(result) {
   display: grid;
   max-height: 240px;
   overflow-y: auto;
-  border: 1px solid #d5d7db;
+  border: 1px solid var(--theme-border, #d5d7db);
   border-radius: 8px;
   padding: 6px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
   box-shadow: 0 12px 28px rgba(32, 33, 36, 0.14);
 }
 
@@ -1280,7 +1299,7 @@ function getSaveError(result) {
   border-radius: 6px;
   padding: 9px 10px;
   background: transparent;
-  color: #202124;
+  color: var(--theme-text, #202124);
   font: inherit;
   font-weight: 700;
   text-align: left;
@@ -1289,13 +1308,13 @@ function getSaveError(result) {
 
 .question-source-option:hover,
 .question-source-option.active {
-  background: #f0f2f5;
+  background: var(--theme-surface-hover, #f0f2f5);
 }
 
 .question-source-empty {
   margin: 0;
   padding: 9px 10px;
-  color: #6a707b;
+  color: var(--theme-muted, #6a707b);
   font-size: 13px;
   font-weight: 650;
   line-height: 1.5;

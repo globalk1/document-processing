@@ -201,17 +201,17 @@ onUnmounted(() => { detachPaste(); generation++; cancelPolling(); uploadControll
 
 <style scoped>
 .ocr-modes { display: grid; gap: 10px; }
-.ocr-modes button { display: grid; text-align: left; gap: 6px; border: 1px solid #ccd6e0; background: white; padding: 12px; border-radius: 8px; cursor: pointer; }
-.ocr-modes button[aria-pressed='true'] { border-color: #153f67; background: #edf4fa; color: #153f67; }
-.ocr-modes small, .ocr-note { color: #647284; font-size: 12px; line-height: 1.6; }
+.ocr-modes button { display: grid; text-align: left; gap: 6px; border: 1px solid var(--theme-border, #ccd6e0); background: var(--theme-surface, white); padding: 12px; border-radius: 8px; cursor: pointer; }
+.ocr-modes button[aria-pressed='true'] { border-color: var(--theme-accent, #153f67); background: var(--theme-accent-bg, #edf4fa); color: var(--theme-accent, #153f67); }
+.ocr-modes small, .ocr-note { color: var(--theme-muted, #647284); font-size: 12px; line-height: 1.6; }
 .ocr-note { margin: 0; }
 .ocr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.ocr-output { width: 100%; min-height: 540px; resize: vertical; border: 1px solid #ccd6e0; border-radius: 8px; padding: 14px; background: white; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.7; }
+.ocr-output { width: 100%; min-height: 540px; resize: vertical; border: 1px solid var(--theme-border, #ccd6e0); border-radius: 8px; padding: 14px; background: var(--theme-surface, white); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.7; }
 .ocr-progress { display: grid; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
-.ocr-progress progress { width: 100%; accent-color: #153f67; }
-.ocr-review { border: 1px solid #e8d29a; border-radius: 8px; padding: 12px; color: #786025; background: #fffbef; font-size: 13px; line-height: 1.6; }
+.ocr-progress progress { width: 100%; accent-color: var(--theme-accent, #153f67); }
+.ocr-review { border: 1px solid var(--theme-warning-border, #e8d29a); border-radius: 8px; padding: 12px; color: var(--theme-warning-text, #786025); background: var(--theme-warning-bg, #fffbef); font-size: 13px; line-height: 1.6; }
 .ocr-review p { margin: 6px 0 0; }
 .ocr-workspace button:disabled, .drop-zone.disabled { opacity: .5; cursor: default; }
-.ocr-workspace button:focus-visible { outline: 3px solid #d3a349; outline-offset: 2px; }
+.ocr-workspace button:focus-visible { outline: 3px solid var(--theme-warning-border, #d3a349); outline-offset: 2px; }
 @media (max-width: 640px) { .panel-header { flex-wrap: wrap; } .ocr-output { min-height: 420px; } }
 </style>

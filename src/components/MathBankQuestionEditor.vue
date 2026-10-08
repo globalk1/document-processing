@@ -56,12 +56,7 @@
         <div class="filter-grid two">
           <label>
             <span class="field-label">難度</span>
-            <select v-model="filters.difficulty" class="select-input" @change="loadQuestions">
-              <option value="">全部難度</option>
-              <option v-for="item in questionDifficulties" :key="item.value" :value="item.value">
-                {{ item.label }}
-              </option>
-            </select>
+            <QuestionDifficultySelect v-model="filters.difficulty" include-all @change="loadQuestions" />
           </label>
           <label>
             <span class="field-label">狀態</span>
@@ -185,7 +180,9 @@
             </section>
             <section class="question-editor-preview-block solution">
               <strong>詳解</strong>
-              <p><MathText :content="question.solution_md" fallback="尚未輸入詳解" /></p>
+              <div class="question-preview-body solution-preview-body" tabindex="0" role="region" aria-label="詳解預覽內文">
+                <p><MathText :content="question.solution_md" fallback="尚未輸入詳解" /></p>
+              </div>
             </section>
           </div>
         </article>
@@ -341,11 +338,7 @@
                 </label>
                 <label>
                   <span class="field-label">難度</span>
-                  <select v-model="questionForm.difficulty" class="select-input">
-                    <option v-for="item in questionDifficulties" :key="item.value" :value="item.value">
-                      {{ item.label }}
-                    </option>
-                  </select>
+                  <QuestionDifficultySelect v-model="questionForm.difficulty" />
                 </label>
               </div>
 
@@ -640,7 +633,9 @@
             </section>
             <section class="solution-preview">
               <strong>詳解</strong>
-              <p><MathText :content="questionForm.solution_md" fallback="尚未輸入詳解" /></p>
+              <div class="question-preview-body solution-preview-body" tabindex="0" role="region" aria-label="詳解預覽內文">
+                <p><MathText :content="questionForm.solution_md" fallback="尚未輸入詳解" /></p>
+              </div>
             </section>
           </div>
         </div>
@@ -652,6 +647,8 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MathText from "./MathText.vue";
+import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
+import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import {
   createStaffMathBankQuestion,
   createStaffMathBankQuestionsBulk,
@@ -680,13 +677,6 @@ const questionTypes = [
   { value: "calculation", label: "計算題" },
   { value: "proof", label: "證明題" },
   { value: "application", label: "應用題" },
-];
-const questionDifficulties = [
-  { value: "A", label: "A 挑戰型" },
-  { value: "B", label: "B 進階型" },
-  { value: "C", label: "C 基礎型" },
-  { value: "S", label: "S 究極型" },
-  { value: "U", label: "未分類" },
 ];
 
 function formatQuestionDifficulty(difficulty) {
@@ -741,7 +731,7 @@ const filters = reactive({
   search: "",
   grade_id: filterNoneValue,
   unit_id: filterNoneValue,
-  difficulty: "",
+  difficulty: "U",
   status: "draft",
 });
 const questionForm = reactive(createEmptyQuestionForm());
@@ -976,7 +966,7 @@ function resetFilters() {
   filters.search = "";
   filters.grade_id = filterNoneValue;
   filters.unit_id = filterNoneValue;
-  filters.difficulty = "";
+  filters.difficulty = "U";
   filters.status = "draft";
   clearQuestions();
   status.value = "idle";

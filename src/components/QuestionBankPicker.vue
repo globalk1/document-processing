@@ -22,6 +22,15 @@
             @input="scheduleLoad"
           />
         </label>
+        <label for="question-picker-status">
+          <span class="field-label">狀態</span>
+          <select id="question-picker-status" v-model="filters.status" class="select-input" @change="loadQuestions">
+            <option value="">全部狀態</option>
+            <option v-for="item in questionStatuses" :key="item.value" :value="item.value">
+              {{ item.label }}
+            </option>
+          </select>
+        </label>
         <div class="filter-grid two">
           <label>
             <span class="field-label">年級</span>
@@ -58,12 +67,7 @@
         </label>
         <label>
           <span class="field-label">難度</span>
-          <select v-model="filters.difficulty" class="select-input" @change="loadQuestions">
-            <option value="">全部</option>
-            <option v-for="item in questionDifficulties" :key="item.value" :value="item.value">
-              {{ item.label }}
-            </option>
-          </select>
+          <QuestionDifficultySelect v-model="filters.difficulty" include-all @change="loadQuestions" />
         </label>
         <div class="draft-filter-actions">
           <button class="ghost-button compact" :disabled="loading" type="button" @click="resetFilters">
@@ -127,7 +131,7 @@
       <div class="question-bank-toolbar">
         <div>
           <h2 class="section-title">題目列表</h2>
-          <p>選取需要輸出的題目。</p>
+          <p>單擊預覽、雙擊編輯；勾選需要輸出的題目。</p>
         </div>
         <div class="icon-group">
           <button class="ghost-button compact" :disabled="!questions.length" type="button" @click="selectAllLoaded">
@@ -148,15 +152,39 @@
           class="question-editor-result-card question-picker-card"
           :class="{ active: isSelected(question.id), 'focus-target': focusedQuestionId === question.id }"
           :data-question-id="question.id"
+          role="button"
+          tabindex="0"
+          aria-label="單擊預覽題目，雙擊編輯題目"
+          aria-haspopup="dialog"
+          title="單擊預覽題目，雙擊編輯題目"
+          @click="queueQuestionPreview($event, question)"
+          @dblclick="editQuestionFromCard($event, question)"
+          @keydown="handleCardKeydown($event, question)"
         >
           <header>
-            <div class="question-bank-meta">
-              <span>{{ question.grade?.name || "-" }}</span>
-              <span>{{ question.unit?.name || "-" }}</span>
-              <span>{{ formatQuestionDifficulty(question.difficulty) }}</span>
-              <span v-if="question.question_source">來源：{{ question.question_source }}</span>
+            <div class="question-picker-heading">
+              <div class="question-bank-meta">
+                <span v-if="question.status" class="status-badge" :class="question.status">{{ formatQuestionStatus(question.status) }}</span>
+                <span>{{ question.grade?.name || "-" }}</span>
+                <span>{{ question.unit?.name || "-" }}</span>
+                <span>{{ formatQuestionDifficulty(question.difficulty) }}</span>
+                <span v-if="question.question_source">來源：{{ question.question_source }}</span>
+              </div>
+              <div class="question-picker-uuid">
+                <span class="question-uuid-copy-control">
+                  <button class="question-uuid-copy" type="button" title="複製題目 UUID" aria-label="複製題目 UUID" @click.stop="copyQuestionUuid(question.id)">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                      <path d="M5 5H3v15a2 2 0 0 0 2 2h11v-2H5V5Zm13-3H9a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V6l-4-4Zm-1 5V3.5L20.5 7H17Z" />
+                    </svg>
+                  </button>
+                  <span v-if="copyFeedback.id === question.id" class="question-uuid-feedback" :class="{ error: copyFeedback.error }" role="status" aria-live="polite">
+                    {{ copyFeedback.message }}
+                  </span>
+                </span>
+                <code :title="question.id">UUID: {{ formatQuestionUuid(question.id) }}</code>
+              </div>
             </div>
-            <div class="question-picker-actions">
+            <div class="question-picker-actions" @click.stop @dblclick.stop>
               <label class="question-picker-check">
                 <input
                   type="checkbox"
@@ -168,7 +196,7 @@
               <button
                 class="ghost-button compact"
                 type="button"
-                @click="emit('edit-question', question.id)"
+                @click="openQuestionEditor(question.id)"
               >
                 編輯題目
               </button>
@@ -201,13 +229,15 @@
             </section>
             <section class="question-editor-preview-block solution">
               <strong>詳解</strong>
-              <p><MathText :content="question.solution_md" fallback="尚未輸入詳解" /></p>
-              <div v-if="getQuestionAssets(question, 'solution').length" class="picker-asset-strip">
-                <QuestionAssetThumbnail
-                  v-for="(asset, index) in getQuestionAssets(question, 'solution')"
-                  :key="asset.id || `solution-${index}`"
-                  :asset="asset"
-                />
+              <div class="question-preview-body solution-preview-body" tabindex="0" role="region" aria-label="詳解預覽內文">
+                <p><MathText :content="question.solution_md" fallback="尚未輸入詳解" /></p>
+                <div v-if="getQuestionAssets(question, 'solution').length" class="picker-asset-strip">
+                  <QuestionAssetThumbnail
+                    v-for="(asset, index) in getQuestionAssets(question, 'solution')"
+                    :key="asset.id || `solution-${index}`"
+                    :asset="asset"
+                  />
+                </div>
               </div>
             </section>
           </div>
@@ -218,6 +248,7 @@
         </div>
       </div>
     </section>
+    <QuestionPreviewModal v-if="previewQuestion" :question="previewQuestion" :difficulty="formatQuestionDifficulty(previewQuestion.difficulty)" @close="clearQuestionPreview" />
   </section>
 </template>
 
@@ -227,9 +258,12 @@ const props = defineProps({
   focusQuestion: { type: Object, default: null },
 });
 const emit = defineEmits(["edit-question"]);
-import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from "vue";
 import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
+import QuestionPreviewModal from "./QuestionPreviewModal.vue";
+import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
+import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
 import {
   generatePublicExamFromBank,
@@ -247,13 +281,21 @@ const examNames = {
   junior_exam_paper: "國中段考卷",
   high_school_exam_paper: "高中段考卷",
 };
-const questionDifficulties = [
-  { value: "A", label: "A 挑戰型" },
-  { value: "B", label: "B 進階型" },
-  { value: "C", label: "C 基礎型" },
-  { value: "S", label: "S 究極型" },
-  { value: "U", label: "未分類" },
+const questionStatuses = [
+  { value: "draft", label: "草稿" },
+  { value: "published", label: "公開" },
+  { value: "archived", label: "封存" },
 ];
+
+function formatQuestionStatus(value) {
+  return questionStatuses.find((item) => item.value === value)?.label || value;
+}
+
+function formatQuestionUuid(value) {
+  const id = String(value || "");
+  const compact = id.replaceAll("-", "");
+  return compact.length > 16 ? `${compact.slice(0, 8)}...${compact.slice(-6)}` : id;
+}
 
 function formatQuestionDifficulty(difficulty) {
   return questionDifficulties.find((item) => item.value === difficulty)?.label || difficulty || "-";
@@ -279,11 +321,14 @@ const exporting = ref(false);
 const status = ref("idle");
 const message = ref("");
 const focusedQuestionId = ref("");
+const copyFeedback = ref({ id: "", message: "", error: false });
+const previewQuestion = ref(null);
 const filters = reactive({
   search: "",
+  status: "",
   grade_id: "",
   unit_id: "",
-  difficulty: "",
+  difficulty: "U",
   question_source: "",
 });
 const {
@@ -307,6 +352,9 @@ const {
 });
 let loadTimer = null;
 let focusTimer = null;
+let copyTimer = null;
+let copyRequest = 0;
+let previewTimer = null;
 
 const filteredUnits = computed(() =>
   filters.grade_id
@@ -324,9 +372,16 @@ onActivated(() => {
   if (props.focusQuestion?.id) focusSavedQuestion(props.focusQuestion);
 });
 
+onDeactivated(() => {
+  clearCopyFeedback();
+  clearQuestionPreview();
+});
+
 onBeforeUnmount(() => {
   if (loadTimer) window.clearTimeout(loadTimer);
   if (focusTimer) window.clearTimeout(focusTimer);
+  clearCopyFeedback();
+  clearQuestionPreview();
 });
 
 watch(
@@ -359,6 +414,7 @@ async function loadTaxonomy() {
 }
 
 async function loadQuestions() {
+  clearQuestionPreview();
   if (loadTimer) window.clearTimeout(loadTimer);
   loadTimer = null;
   status.value = "loading";
@@ -368,6 +424,10 @@ async function loadQuestions() {
 
 async function focusSavedQuestion(updatedQuestion) {
   const questionId = updatedQuestion.id;
+  if (filters.status && updatedQuestion.status !== filters.status) {
+    questions.value = questions.value.filter((question) => question.id !== questionId);
+    return;
+  }
   const questionIndex = questions.value.findIndex((question) => question.id === questionId);
   if (questionIndex >= 0) {
     const nextQuestions = [...questions.value];
@@ -404,15 +464,77 @@ function scheduleLoad() {
 
 function resetFilters() {
   filters.search = "";
+  filters.status = "";
   filters.grade_id = "";
   filters.unit_id = "";
-  filters.difficulty = "";
+  filters.difficulty = "U";
   filters.question_source = "";
   loadQuestions();
 }
 
 function isSelected(id) {
   return Boolean(selectedMap.value[id]);
+}
+
+function cancelQuestionPreviewTimer() {
+  if (previewTimer) window.clearTimeout(previewTimer);
+  previewTimer = null;
+}
+
+function clearQuestionPreview() {
+  cancelQuestionPreviewTimer();
+  previewQuestion.value = null;
+}
+
+function isCardControl(event) {
+  return Boolean(event.target.closest("button, input, label, a, select, textarea"));
+}
+
+function queueQuestionPreview(event, question) {
+  cancelQuestionPreviewTimer();
+  if (isCardControl(event) || event.detail > 1) return;
+  previewTimer = window.setTimeout(() => {
+    previewTimer = null;
+    previewQuestion.value = question;
+  }, 350);
+}
+
+function openQuestionEditor(id) {
+  clearQuestionPreview();
+  emit("edit-question", id);
+}
+
+function editQuestionFromCard(event, question) {
+  if (!isCardControl(event)) openQuestionEditor(question.id);
+}
+
+function handleCardKeydown(event, question) {
+  if (event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  cancelQuestionPreviewTimer();
+  previewQuestion.value = question;
+}
+
+function clearCopyFeedback() {
+  copyRequest += 1;
+  if (copyTimer) window.clearTimeout(copyTimer);
+  copyTimer = null;
+  copyFeedback.value = { id: "", message: "", error: false };
+}
+
+async function copyQuestionUuid(id) {
+  cancelQuestionPreviewTimer();
+  clearCopyFeedback();
+  const request = copyRequest;
+  let failed = false;
+  try {
+    await navigator.clipboard.writeText(String(id));
+  } catch {
+    failed = true;
+  }
+  if (request !== copyRequest) return;
+  copyFeedback.value = { id, message: failed ? "複製失敗" : "已複製", error: failed };
+  copyTimer = window.setTimeout(clearCopyFeedback, 1600);
 }
 
 function toggleQuestion(question) {

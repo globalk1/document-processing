@@ -46,7 +46,7 @@ function closeOnDesktopMouseLeave() {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(20, 20, 20, 0.5);
+  background: var(--theme-overlay, rgba(20, 20, 20, 0.5));
 }
 
 .expanded-editor {
@@ -55,10 +55,10 @@ function closeOnDesktopMouseLeave() {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
-  border: 1px solid #2b2b2b;
+  border: 1px solid var(--theme-strong-border, #2b2b2b);
   border-radius: 8px;
   padding: 16px;
-  background: #f8f8f8;
+  background: var(--theme-surface-soft, #f8f8f8);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.35);
 }
 
@@ -83,10 +83,10 @@ function closeOnDesktopMouseLeave() {
 .icon-button,
 .text-icon-button {
   height: 38px;
-  border: 1px solid #c9c9c9;
+  border: 1px solid var(--theme-border, #c9c9c9);
   border-radius: 8px;
-  background: #fff;
-  color: #3d3d3d;
+  background: var(--theme-surface, #fff);
+  color: var(--theme-text, #3d3d3d);
   font-weight: 750;
   cursor: pointer;
 }
@@ -102,8 +102,8 @@ function closeOnDesktopMouseLeave() {
 }
 
 .text-icon-button.active {
-  border-color: #242424;
-  background: #242424;
+  border-color: var(--theme-strong-border, #242424);
+  background: var(--theme-strong, #242424);
   color: #fff;
 }
 
@@ -112,13 +112,13 @@ function closeOnDesktopMouseLeave() {
   min-height: 0;
   height: 100%;
   resize: none;
-  border: 1px solid #cfcfcf;
+  border: 1px solid var(--theme-border, #cfcfcf);
   border-radius: 8px;
   padding: 14px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 1.6;
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 
 @media (max-width: 640px) {

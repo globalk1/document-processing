@@ -212,17 +212,10 @@
               </label>
               <label>
                 <span class="field-label">難度</span>
-                <select
-                  class="select-input"
-                  :value="questionDifficulty(question)"
-                  @change="setQuestionMathBank(question, { difficulty: $event.target.value })"
-                >
-                  <option value="A">A 挑戰型</option>
-                  <option value="B">B 進階型</option>
-                  <option value="C">C 基礎型</option>
-                  <option value="S">S 究極型</option>
-                  <option value="U">未分類</option>
-                </select>
+                <QuestionDifficultySelect
+                  :model-value="questionDifficulty(question)"
+                  @update:model-value="setQuestionMathBank(question, { difficulty: $event })"
+                />
               </label>
             </div>
 
@@ -346,9 +339,11 @@
                 <strong>答案</strong>
                 <p><MathText :content="question.answer" fallback="尚未輸入答案" /></p>
               </section>
-              <section>
+              <section class="solution-preview">
                 <strong>詳解</strong>
-                <p><MathText :content="solutionText(question)" fallback="尚未輸入詳解" /></p>
+                <div class="question-preview-body solution-preview-body" tabindex="0" role="region" aria-label="詳解預覽內文">
+                  <p><MathText :content="solutionText(question)" fallback="尚未輸入詳解" /></p>
+                </div>
               </section>
             </div>
           </article>
@@ -386,6 +381,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from "vue";
 import MathText from "./MathText.vue";
+import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
 import {
   createStaffMathBankGrade,
   createStaffMathBankQuestionsBulk,
