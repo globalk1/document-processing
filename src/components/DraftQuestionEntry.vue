@@ -4,7 +4,7 @@
       <div class="draft-list-header">
         <div>
           <h2 class="section-title">草稿題目</h2>
-          <p>{{ drafts.length }} 題</p>
+          <p>{{ drafts.length }}{{ hasMore ? "+" : "" }} 題</p>
         </div>
         <button class="secondary-button compact" :disabled="loading" type="button" @click="loadDrafts">
           {{ loading ? "讀取中" : "重新整理" }}
@@ -75,7 +75,7 @@
       <div v-else-if="!drafts.length" class="empty-state compact">
         目前沒有草稿題目。
       </div>
-      <div v-else class="draft-list">
+      <div v-else ref="draftListRef" class="draft-list">
         <button
           v-for="question in drafts"
           :key="question.id"
@@ -90,6 +90,10 @@
           </strong>
           <small>{{ formatQuestionDifficulty(question.difficulty) }} · 草稿</small>
         </button>
+        <div ref="draftSentinel" class="load-more-row compact" aria-live="polite">
+          <span v-if="hasMore">{{ loadingMore ? "載入更多草稿中..." : "滾到底自動載入更多草稿" }}</span>
+          <span v-else>已載入全部符合條件的草稿</span>
+        </div>
       </div>
 
       <p v-if="message" class="message" :class="status">{{ message }}</p>
@@ -479,6 +483,7 @@ const props = defineProps({
 const emit = defineEmits(["copy", "saved"]);
 import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MarkdownMathText from "./MarkdownMathText.vue";
+import { useQuestionPages } from "../composables/useQuestionPages";
 import {
   createStaffMathBankQuestion,
   deleteStaffMathBankQuestion,
@@ -497,7 +502,6 @@ const defaultStaffApiKey =
   import.meta.env.VITE_STAFF_API_KEY ||
   "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
 const goodQuestionFolder = "好題蒐集";
-const pageSize = 100;
 const questionTypes = [
   { value: "choice", label: "選擇題" },
   { value: "fill", label: "填充題" },
@@ -531,12 +535,11 @@ function formatQuestionStatus(statusValue) {
 const grades = ref([]);
 const units = ref([]);
 const questionSources = ref([]);
-const drafts = ref([]);
 const selectedId = ref("");
 const editingStatus = ref("draft");
 const editingVisibility = ref("public");
 const lastCreatedId = ref("");
-const loading = ref(false);
+const openingQuestion = ref(false);
 const saving = ref(false);
 const status = ref("idle");
 const message = ref("");
@@ -559,6 +562,28 @@ const filters = reactive({
   unit_id: "",
   difficulty: "",
 });
+const draftListRef = ref(null);
+const {
+  questions: drafts,
+  loading: draftsLoading,
+  loadingMore,
+  hasMore,
+  sentinel: draftSentinel,
+  load: loadDraftPage,
+} = useQuestionPages({
+  root: draftListRef,
+  getFilters: () => ({ ...filters, status: "draft", include_details: "true" }),
+  fetchPage: (params) => searchStaffMathBankQuestions(params, { subject: props.subject, apiKey: defaultStaffApiKey }),
+  onError: (error) => {
+    status.value = "error";
+    message.value = error;
+  },
+  onLoaded: () => {
+    status.value = "success";
+    message.value = `已讀取 ${drafts.value.length} 題草稿。`;
+  },
+});
+const loading = computed(() => draftsLoading.value || openingQuestion.value);
 let filterTimer = null;
 
 const filteredUnits = computed(() =>
@@ -716,50 +741,16 @@ function questionSourceOptionId(index) {
 }
 
 async function loadDrafts() {
-  loading.value = true;
+  if (filterTimer) window.clearTimeout(filterTimer);
+  filterTimer = null;
   status.value = "loading";
   message.value = "正在讀取草稿...";
-
-  const allDrafts = [];
-  let cursor = "";
-  let hasMore = true;
-
-  while (hasMore) {
-    const result = await searchStaffMathBankQuestions(
-      {
-        search: filters.search,
-        grade_id: filters.grade_id,
-        unit_id: filters.unit_id,
-        difficulty: filters.difficulty,
-        status: "draft",
-        include_details: "true",
-        limit: pageSize,
-        cursor,
-      },
-      { subject: props.subject, apiKey: defaultStaffApiKey },
-    );
-
-    if (!result.success) {
-      loading.value = false;
-      status.value = "error";
-      message.value = result.error || "草稿讀取失敗。";
-      return;
-    }
-
-    allDrafts.push(...(result.data.results || []));
-    hasMore = Boolean(result.data.has_more && result.data.next_cursor);
-    cursor = result.data.next_cursor || "";
-  }
-
-  drafts.value = allDrafts;
-  loading.value = false;
-  status.value = "success";
-  message.value = `已讀取 ${allDrafts.length} 題草稿。`;
+  await loadDraftPage();
 }
 
 async function openInitialQuestion(questionId = props.initialQuestionId) {
   if (!questionId) return;
-  loading.value = true;
+  openingQuestion.value = true;
   status.value = "loading";
   message.value = "正在載入題目，準備編輯...";
   try {
@@ -775,7 +766,7 @@ async function openInitialQuestion(questionId = props.initialQuestionId) {
     selectDraft(result.data);
     message.value = "已從題庫載入題目，可直接編輯。";
   } finally {
-    loading.value = false;
+    openingQuestion.value = false;
   }
 }
 

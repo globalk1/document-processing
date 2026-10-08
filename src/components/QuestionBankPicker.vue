@@ -212,16 +212,8 @@
             </section>
           </div>
         </article>
-        <div class="load-more-row compact">
-          <button
-            v-if="hasMore"
-            class="secondary-button compact"
-            :disabled="loadingMore"
-            type="button"
-            @click="loadMore"
-          >
-            {{ loadingMore ? "載入中" : "載入更多" }}
-          </button>
+        <div ref="questionSentinel" class="load-more-row compact" aria-live="polite">
+          <span v-if="hasMore">{{ loadingMore ? "載入更多題目中..." : "滾到底自動載入更多題目" }}</span>
           <span v-else>已載入全部符合條件的題目</span>
         </div>
       </div>
@@ -238,6 +230,7 @@ const emit = defineEmits(["edit-question"]);
 import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
+import { useQuestionPages } from "../composables/useQuestionPages";
 import {
   generatePublicExamFromBank,
   listMathBankGrades,
@@ -246,7 +239,6 @@ import {
   searchStaffMathBankQuestions,
 } from "../services/api";
 
-const pageSize = 50;
 const defaultStaffApiKey =
   import.meta.env.VITE_STAFF_API_KEY ||
   "Q2yu32SCbv8ha21dICnCOZ7vdq0Kl/PEbix44tq52KYhfrWcbRxrcrL9FtK7lqbj";
@@ -277,7 +269,6 @@ function getQuestionAssets(question, role) {
 const grades = ref([]);
 const units = ref([]);
 const questionSources = ref([]);
-const questions = ref([]);
 const selectedMap = ref({});
 const examTemplateId = ref("junior_exam_paper");
 const filename = ref("國中段考卷.docx");
@@ -285,10 +276,6 @@ const title = ref("國中段考卷");
 const examRange = ref("");
 const mode = ref("teaching");
 const exporting = ref(false);
-const loading = ref(false);
-const loadingMore = ref(false);
-const hasMore = ref(false);
-const nextCursor = ref("");
 const status = ref("idle");
 const message = ref("");
 const focusedQuestionId = ref("");
@@ -298,6 +285,25 @@ const filters = reactive({
   unit_id: "",
   difficulty: "",
   question_source: "",
+});
+const {
+  questions,
+  loading,
+  loadingMore,
+  hasMore,
+  sentinel: questionSentinel,
+  load: loadQuestionPage,
+} = useQuestionPages({
+  getFilters: () => ({ ...filters, include_details: "true" }),
+  fetchPage: (params) => searchStaffMathBankQuestions(params, { subject: props.subject, apiKey: defaultStaffApiKey }),
+  onError: (error) => {
+    status.value = "error";
+    message.value = error;
+  },
+  onLoaded: () => {
+    status.value = "success";
+    message.value = `已讀取 ${questions.value.length} 題。`;
+  },
 });
 let loadTimer = null;
 let focusTimer = null;
@@ -353,23 +359,11 @@ async function loadTaxonomy() {
 }
 
 async function loadQuestions() {
-  loading.value = true;
+  if (loadTimer) window.clearTimeout(loadTimer);
+  loadTimer = null;
   status.value = "loading";
   message.value = "正在讀取題目...";
-
-  const result = await fetchQuestionPage("");
-  loading.value = false;
-  if (!result.success) {
-    status.value = "error";
-    message.value = result.error || "題目讀取失敗。";
-    return;
-  }
-
-  questions.value = result.data.results || [];
-  hasMore.value = Boolean(result.data.has_more && result.data.next_cursor);
-  nextCursor.value = result.data.next_cursor || "";
-  status.value = "success";
-  message.value = `已讀取 ${questions.value.length} 題。`;
+  await loadQuestionPage();
 }
 
 async function focusSavedQuestion(updatedQuestion) {
@@ -393,37 +387,6 @@ async function focusSavedQuestion(updatedQuestion) {
     focusedQuestionId.value = "";
     focusTimer = null;
   }, 2200);
-}
-
-async function loadMore() {
-  if (!hasMore.value || loadingMore.value) return;
-  loadingMore.value = true;
-  const result = await fetchQuestionPage(nextCursor.value);
-  loadingMore.value = false;
-  if (!result.success) {
-    status.value = "error";
-    message.value = result.error || "更多題目讀取失敗。";
-    return;
-  }
-  questions.value = [...questions.value, ...(result.data.results || [])];
-  hasMore.value = Boolean(result.data.has_more && result.data.next_cursor);
-  nextCursor.value = result.data.next_cursor || "";
-}
-
-function fetchQuestionPage(cursor) {
-  return searchStaffMathBankQuestions(
-    {
-      search: filters.search,
-      grade_id: filters.grade_id,
-      unit_id: filters.unit_id,
-      difficulty: filters.difficulty,
-      question_source: filters.question_source,
-      include_details: "true",
-      limit: pageSize,
-      cursor,
-    },
-    { subject: props.subject, apiKey: defaultStaffApiKey },
-  );
 }
 
 function handleGradeChange() {

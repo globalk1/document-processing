@@ -1709,6 +1709,8 @@ h1 {
 
 .load-more-row {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
   justify-content: center;
   min-height: 48px;
