@@ -36,13 +36,18 @@ afterEach(() => {
 });
 
 describe("upper-right day/night toggle", () => {
-  it("uses neutral dark gray rather than blue for its main surfaces and controls", () => {
+  it("uses the original my-home blue-gray theme for its main surfaces and controls", () => {
     const themeCss = readFileSync("src/styles/global.css", "utf8");
     const palette = themeCss.match(/:root\[data-theme="dark"\]\s*\{([^}]+)\}/)[1];
-    for (const name of ["page", "surface", "surface-soft", "surface-hover", "text", "muted", "border", "strong", "strong-border", "accent-bg", "accent"]) {
+    const expectedColors = {
+      page: "303338", surface: "3b3f45", "surface-soft": "4f5660",
+      "surface-hover": "464c54", text: "eef1f5", muted: "aeb6c1",
+      border: "555b63", strong: "4f5660", "strong-border": "cfd5de",
+      "accent-bg": "4a5058", accent: "c7cdd5",
+    };
+    for (const [name, expected] of Object.entries(expectedColors)) {
       const hex = palette.match(new RegExp(`--theme-${name}:\\s*#([0-9a-f]{6})`))[1];
-      expect(hex.slice(0, 2)).toBe(hex.slice(2, 4));
-      expect(hex.slice(2, 4)).toBe(hex.slice(4, 6));
+      expect(hex).toBe(expected);
     }
   });
 
