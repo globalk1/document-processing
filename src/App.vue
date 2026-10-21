@@ -88,6 +88,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, ref } from "vue";
 import DraftQuestionEntry from "./components/DraftQuestionEntry.vue";
 import QuestionBankPicker from "./components/QuestionBankPicker.vue";
+import { SUBJECTS as subjects } from "./constants/subjects";
 import { useColorTheme } from "./composables/useColorTheme";
 
 const { isDark, toggleTheme } = useColorTheme();
@@ -96,7 +97,6 @@ const PdfEditorWorkspace = defineAsyncComponent(() => import("./components/PdfEd
 const HandwritingWorkspace = defineAsyncComponent(() => import("./components/HandwritingWorkspace.vue"));
 const OcrWorkspace = defineAsyncComponent(() => import("./components/OcrWorkspace.vue"));
 
-const subjects = [["math", "數學"], ["chinese", "國文"], ["english", "英文"], ["physics", "物理"], ["chemistry", "化學"], ["biology", "生物"], ["earth_science", "地科"]];
 const subject = ref("math");
 const activePage = ref("entry");
 const questionEditorInitialQuestionId = ref("");

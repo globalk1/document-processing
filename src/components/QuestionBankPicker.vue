@@ -12,6 +12,7 @@
       </div>
 
       <section class="draft-filter-box">
+        <QuestionCategorySelect :subject="subject" v-model="filters.category" filter label="科目分類" @change="loadQuestions" />
         <label>
           <span class="field-label">搜尋</span>
           <input
@@ -265,6 +266,7 @@ import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
 import QuestionPreviewModal from "./QuestionPreviewModal.vue";
 import QuestionFilterSelect from "./QuestionFilterSelect.vue";
+import QuestionCategorySelect from "./QuestionCategorySelect.vue";
 import { filterMatches, reconcileUnits } from "../utils/questionFilters";
 import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
@@ -327,6 +329,7 @@ const focusedQuestionId = ref("");
 const copyFeedback = ref({ id: "", message: "", error: false });
 const previewQuestion = ref(null);
 const filters = reactive({
+  category: "",
   search: "",
   status: "",
   grade_id: "",
@@ -425,7 +428,9 @@ async function loadQuestions() {
 
 async function focusSavedQuestion(updatedQuestion) {
   const questionId = updatedQuestion.id;
-  if (!filterMatches(filters.status, updatedQuestion.status)) {
+  if (!filterMatches(filters.status, updatedQuestion.status) ||
+      (filters.category === "unassigned" ? Boolean(updatedQuestion.category) :
+        Boolean(filters.category && filters.category !== updatedQuestion.category))) {
     questions.value = questions.value.filter((question) => question.id !== questionId);
     return;
   }
@@ -464,6 +469,7 @@ function scheduleLoad() {
 }
 
 function resetFilters() {
+  filters.category = "";
   filters.search = "";
   filters.status = "";
   filters.grade_id = "";

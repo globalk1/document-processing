@@ -16,6 +16,7 @@
       </button>
 
       <section class="draft-filter-box">
+        <QuestionCategorySelect :subject="subject" v-model="filters.category" filter label="科目分類" @change="loadDrafts" />
         <label>
           <span class="field-label">搜尋</span>
           <input
@@ -141,6 +142,8 @@
             </div>
             <strong>草稿</strong>
           </header>
+
+          <QuestionCategorySelect :subject="subject" v-model="form.category" />
 
           <div class="filter-grid two">
             <label>
@@ -470,6 +473,7 @@ import { computed, onActivated, onDeactivated, onBeforeUnmount, onMounted, react
 import MarkdownMathText from "./MarkdownMathText.vue";
 import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
 import QuestionFilterSelect from "./QuestionFilterSelect.vue";
+import QuestionCategorySelect from "./QuestionCategorySelect.vue";
 import { filterMatches, reconcileUnits } from "../utils/questionFilters";
 import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
@@ -544,6 +548,7 @@ const renderedImageStates = reactive({});
 const pendingRenders = new Map();
 const form = reactive(createEmptyForm());
 const filters = reactive({
+  category: "",
   search: "",
   grade_id: "",
   unit_id: "",
@@ -804,6 +809,7 @@ function scheduleDraftLoad() {
 }
 
 function resetFilters() {
+  filters.category = "";
   filters.search = "";
   filters.grade_id = "";
   filters.unit_id = "";
@@ -813,6 +819,7 @@ function resetFilters() {
 
 function createEmptyForm() {
   return {
+    category: "",
     grade_id: "",
     unit_id: "",
     type: "calculation",
@@ -852,6 +859,7 @@ function selectDraft(question) {
   Object.assign(form, {
     grade_id: stringifyValue(question.grade?.id || question.grade_id),
     unit_id: stringifyValue(question.unit?.id || question.unit_id),
+    category: question.category || "",
     type: question.type || "calculation",
     difficulty: question.difficulty || "U",
     question_source: normalizeQuestionSource(question.question_source),
@@ -879,6 +887,7 @@ function buildPayload() {
   const payload = {
     grade_id: form.grade_id,
     unit_id: form.unit_id,
+    ...(["science", "social"].includes(props.subject) ? { category: form.category } : {}),
     type: form.type,
     difficulty: form.difficulty,
     question_source: normalizeQuestionSource(form.question_source),
