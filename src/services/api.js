@@ -863,15 +863,20 @@ export async function generateWordFromBank({
   mixedVersion,
   sectionMode = "unit",
   apiKey = "",
+  subject,
+  examRange,
+  signal,
 }) {
   try {
-    const headers = getAuthHeaders({
-      "Content-Type": "application/json",
-    });
-    if (apiKey.trim()) headers["X-API-KEY"] = apiKey.trim();
+    // Use the same staff credential as the question list, even if an old login
+    // token remains in storage from another workspace.
+    const headers = apiKey.trim()
+      ? { "Content-Type": "application/json", "X-API-KEY": apiKey.trim() }
+      : getAuthHeaders({ "Content-Type": "application/json" });
 
     const response = await fetch(`${API_URL}/word/generate-from-bank/`, {
       method: "POST",
+      ...(signal ? { signal } : {}),
       headers,
       body: JSON.stringify({
         question_ids: questionIds,
@@ -881,6 +886,8 @@ export async function generateWordFromBank({
         mode,
         ...(mode === "mixed" && mixedVersion ? { mixed_version: mixedVersion } : {}),
         section_mode: sectionMode,
+        ...(subject ? { subject } : {}),
+        ...(examRange !== undefined ? { exam_range: examRange } : {}),
       }),
     });
 
@@ -889,22 +896,37 @@ export async function generateWordFromBank({
       return {
         success: true,
         blob,
-        filename: getDownloadFilename(response, filename),
+        filename: getDownloadFilename(response, mixedExportFilename(filename, mode, mixedVersion)),
       };
     }
 
     const result = await parseJson(response);
     return {
       success: false,
-      error: getAuthError(response, result, "題庫講義產生失敗"),
+      error: wordBankExportError(response, result),
       code: result.code,
       status: response.status,
       data: result,
     };
   } catch (error) {
+    if (error?.name === "AbortError") return { success: false, cancelled: true, status: 0 };
     console.error("generateWordFromBank failed", error);
     return { success: false, error: "無法連線至題庫講義產生服務", status: 0 };
   }
+}
+
+function mixedExportFilename(filename, mode, mixedVersion) {
+  if (mode !== "mixed") return filename;
+  const base = filename.replace(/\.docx$/i, "");
+  return `${base}_${mixedVersion === "teacher" ? "教用.docx" : mixedVersion === "student" ? "學用.docx" : "教用學用.zip"}`;
+}
+
+function wordBankExportError(response, result) {
+  if (result.error === "Some selected questions were not found or are not available.") {
+    return "部分選取題目已刪除、設為私人，或目前沒有匯出權限。請重新整理題目列表後再試。";
+  }
+  if (response.status === 401 || response.status === 403) return "目前沒有匯出權限，請確認帳號或教務服務權限後再試。";
+  return getAuthError(response, result, "題庫 Word 產生失敗。請稍後重試。");
 }
 
 export async function generatePublicExamFromBank({

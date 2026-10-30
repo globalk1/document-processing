@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   listMathBankQuestionSources: vi.fn(),
   getStaffMathBankQuestion: vi.fn(),
   generatePublicExamFromBank: vi.fn(),
+  generateWordFromBank: vi.fn(),
 }));
 vi.mock("../src/services/api", async (importOriginal) => ({ ...await importOriginal(), ...api }));
 
@@ -59,6 +60,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   chooseMixedWordExport.mockResolvedValue("teacher");
   api.generatePublicExamFromBank.mockResolvedValue({ success: false, error: "export checked" });
+  api.generateWordFromBank.mockResolvedValue({ success: false, error: "export checked" });
   observers = [];
   vi.stubGlobal("IntersectionObserver", class {
     constructor(callback, options) {
@@ -278,7 +280,7 @@ for (const [name, component, selector] of [
   });
 }
 
-it.each(["teacher", "student", "both"])("public picker sends mixed %s through its existing export function", async (variant) => {
+it.each(["teacher", "student", "both"])("staff picker sends mixed %s through the staff-capable bank export", async (variant) => {
   chooseMixedWordExport.mockResolvedValue(variant);
   wrapper = mount(QuestionBankPicker, {
     props: { subject: "english" },
@@ -289,6 +291,65 @@ it.each(["teacher", "student", "both"])("public picker sends mixed %s through it
   const mode = wrapper.findAll("select").find((select) => select.find('option[value="mixed"]').exists());
   await mode.setValue("mixed");
   await click("匯出段考卷 Word");
-  expect(api.generatePublicExamFromBank).toHaveBeenCalledTimes(1);
-  expect(api.generatePublicExamFromBank.mock.calls[0][0]).toMatchObject({ mode: "mixed", mixedVersion: variant });
+  expect(api.generatePublicExamFromBank).not.toHaveBeenCalled();
+  expect(api.generateWordFromBank).toHaveBeenCalledTimes(1);
+  const payload = api.generateWordFromBank.mock.calls[0][0];
+  expect(payload).toMatchObject({ mode: "mixed", mixedVersion: variant, subject: "english", sectionMode: "selected", signal: expect.any(AbortSignal) });
+  expect(Boolean(payload.apiKey)).toBe(true);
+  expect(payload.apiKey === api.searchStaffMathBankQuestions.mock.calls[0][1].apiKey).toBe(true);
+});
+
+it.each(["teaching_brief", "teaching_detailed", "student"])("staff picker exports %s directly with the selected subject, order and range", async (mode) => {
+  wrapper = mount(QuestionBankPicker, { props: { subject: "english" },
+    global: { stubs: { MarkdownMathText: true, MathText: true, QuestionAssetThumbnail: true } } });
+  await settle();
+  const checks = wrapper.findAll('.question-picker-check input');
+  await checks[2].setValue(true); await checks[0].setValue(true);
+  const form = wrapper.find('.action-box');
+  await form.findAll('select')[1].setValue(mode);
+  await form.findAll('input')[2].setValue('第三冊第一章');
+  expect(form.text()).toContain('草稿 2 題');
+  await click('匯出段考卷 Word');
+  expect(chooseMixedWordExport).not.toHaveBeenCalled();
+  expect(api.generatePublicExamFromBank).not.toHaveBeenCalled();
+  expect(api.generateWordFromBank.mock.lastCall[0]).toMatchObject({
+    mode, subject: 'english', examRange: '第三冊第一章', questionIds: ['question-2', 'question-0'], sectionMode: 'selected',
+  });
+  expect(api.generateWordFromBank.mock.lastCall[0]).not.toHaveProperty('mixedVersion');
+  expect(form.findAll('select')[1].element.disabled).toBe(false);
+});
+
+it('export locks version controls and cancels the request when the picker is deactivated', async () => {
+  const result = deferred(); api.generateWordFromBank.mockReturnValue(result.promise);
+  wrapper = mount(QuestionBankPicker, { props: { subject: 'english' },
+    global: { stubs: { MarkdownMathText: true, MathText: true, QuestionAssetThumbnail: true } } });
+  await settle(); await click('全選目前列表'); await click('匯出段考卷 Word');
+  expect(wrapper.find('.action-box').findAll('input, select, button').every(field => field.element.disabled)).toBe(true);
+  const signal = api.generateWordFromBank.mock.lastCall[0].signal;
+  wrapper.unmount(); wrapper = null;
+  expect(signal.aborted).toBe(true);
+  result.resolve({ success: false, cancelled: true }); await settle();
+});
+
+it('closing the mixed choice makes no export request and restores the form', async () => {
+  chooseMixedWordExport.mockResolvedValue(null);
+  wrapper = mount(QuestionBankPicker, { props: { subject: 'english' },
+    global: { stubs: { MarkdownMathText: true, MathText: true, QuestionAssetThumbnail: true } } });
+  await settle(); await click('全選目前列表');
+  await wrapper.find('.action-box').findAll('select')[1].setValue('mixed');
+  await click('匯出段考卷 Word');
+  expect(api.generateWordFromBank).not.toHaveBeenCalled();
+  expect(wrapper.find('.action-box').findAll('select')[1].element.disabled).toBe(false);
+});
+
+it('describes each version and rejects over 200 selected questions before sending a request', async () => {
+  api.searchStaffMathBankQuestions.mockResolvedValue(page(0, 201, null));
+  wrapper = mount(QuestionBankPicker, { props: { subject: 'english' },
+    global: { stubs: { MarkdownMathText: true, MathText: true, QuestionAssetThumbnail: true } } });
+  await settle();
+  const modes = wrapper.find('.action-box').findAll('select')[1];
+  await modes.setValue('student'); expect(wrapper.find('[data-export-version-hint]').text()).toContain('只輸出題目');
+  await modes.setValue('teaching_brief'); expect(wrapper.find('[data-export-version-hint]').text()).toBe('顯示簡答與來源，不含詳解。');
+  await click('全選目前列表'); await click('匯出段考卷 Word');
+  expect(wrapper.text()).toContain('一次最多匯出 200 題'); expect(api.generateWordFromBank).not.toHaveBeenCalled();
 });

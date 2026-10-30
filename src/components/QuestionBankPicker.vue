@@ -82,9 +82,12 @@
       <section class="action-box">
         <h3>匯出</h3>
         <p class="field-hint">已選 {{ selectedQuestions.length }} 題。</p>
+        <p v-if="selectedDraftCount || selectedArchivedCount" class="field-hint">
+          含{{ selectedDraftCount ? `草稿 ${selectedDraftCount} 題` : "" }}{{ selectedDraftCount && selectedArchivedCount ? "、" : "" }}{{ selectedArchivedCount ? `封存 ${selectedArchivedCount} 題` : "" }}，依目前保存內容匯出。
+        </p>
         <label>
           <span class="field-label">模板</span>
-          <select v-model="examTemplateId" class="select-input" @change="handleExamTemplateChange">
+          <select v-model="examTemplateId" class="select-input" :disabled="exporting" @change="handleExamTemplateChange">
             <option value="elementary_exam_paper">國小段考卷</option>
             <option value="junior_exam_paper">國中段考卷</option>
             <option value="high_school_exam_paper">高中段考卷</option>
@@ -92,25 +95,26 @@
         </label>
         <label>
           <span class="field-label">檔名</span>
-          <input v-model="filename" class="text-input" type="text" />
+          <input v-model="filename" class="text-input" type="text" :disabled="exporting" />
         </label>
         <label>
           <span class="field-label">標題</span>
-          <input v-model="title" class="text-input" type="text" />
+          <input v-model="title" class="text-input" type="text" :disabled="exporting" />
         </label>
         <label>
           <span class="field-label">範圍</span>
-          <input v-model="examRange" class="text-input" type="text" />
+          <input v-model="examRange" class="text-input" type="text" :disabled="exporting" />
         </label>
         <label>
           <span class="field-label">版本</span>
-          <select v-model="mode" class="select-input">
+          <select v-model="mode" class="select-input" :disabled="exporting">
             <option value="mixed">教用學用混合</option>
             <option value="teaching_brief">教用簡答</option>
             <option value="teaching_detailed">教用詳解</option>
             <option value="student">學用（僅題目）</option>
           </select>
         </label>
+        <p class="field-hint" data-export-version-hint>{{ exportVersionHint }}</p>
         <button
           class="primary-button full"
           :disabled="!selectedQuestions.length || exporting"
@@ -121,7 +125,7 @@
         </button>
         <button
           class="secondary-button full"
-          :disabled="!selectedQuestions.length"
+          :disabled="!selectedQuestions.length || exporting"
           type="button"
           @click="clearSelection"
         >
@@ -274,7 +278,7 @@ import { filterMatches, reconcileUnits } from "../utils/questionFilters";
 import { QUESTION_DIFFICULTIES as questionDifficulties } from "../constants/questionDifficulties";
 import { useQuestionPages } from "../composables/useQuestionPages";
 import {
-  generatePublicExamFromBank,
+  generateWordFromBank,
   listMathBankGrades,
   listMathBankQuestionSources,
   listMathBankUnits,
@@ -372,6 +376,14 @@ const filteredUnits = computed(() =>
   units.value.filter((unit) => filterMatches(filters.grade_id, getUnitGradeId(unit))),
 );
 const selectedQuestions = computed(() => Object.values(selectedMap.value));
+const selectedDraftCount = computed(() => selectedQuestions.value.filter((question) => question.status === "draft").length);
+const selectedArchivedCount = computed(() => selectedQuestions.value.filter((question) => question.status === "archived").length);
+const exportVersionHint = computed(() => ({
+  mixed: "下載時選教用、學用或兩份；兩份皆不含詳解。",
+  teaching_brief: "顯示簡答與來源，不含詳解。",
+  teaching_detailed: "顯示簡答、詳解與來源。",
+  student: "只輸出題目，不含簡答、詳解或來源。",
+}[mode.value]));
 
 onMounted(async () => {
   await loadTaxonomy();
@@ -582,26 +594,29 @@ function handleExamTemplateChange() {
 
 async function exportSelectedWord() {
   if (!selectedQuestions.value.length || exporting.value) return;
+  if (selectedQuestions.value.length > 200) {
+    status.value = "error"; message.value = "一次最多匯出 200 題，請減少選取題目後再試。"; return;
+  }
+  const selection = {
+    questionIds: selectedQuestions.value.map((question) => question.id),
+    subject: props.subject, templateId: examTemplateId.value, mode: mode.value,
+    title: title.value.trim() || examNames[examTemplateId.value],
+    examRange: examRange.value.trim(),
+    filename: (filename.value.trim() || `${examNames[examTemplateId.value]}.docx`).replace(/\.docx$/i, "") + ".docx",
+  };
   exporting.value = true;
   const controller = new AbortController();
   wordExportController = controller;
   status.value = "loading";
   message.value = "正在產生段考卷 Word...";
-  const defaultName = examNames[examTemplateId.value];
-  const outputFilename = (filename.value.trim() || `${defaultName}.docx`).replace(/\.docx$/i, "") + ".docx";
   try {
-    const mixedVersion = mode.value === "mixed" ? await chooseMixedWordExport(controller.signal) : null;
-    if (controller.signal.aborted || (mode.value === "mixed" && !mixedVersion)) {
+    const mixedVersion = selection.mode === "mixed" ? await chooseMixedWordExport(controller.signal) : null;
+    if (controller.signal.aborted || (selection.mode === "mixed" && !mixedVersion)) {
       status.value = "idle"; message.value = ""; return;
     }
-    const result = await generatePublicExamFromBank({
-      questionIds: selectedQuestions.value.map((question) => question.id),
-      filename: outputFilename,
-      title: title.value.trim() || defaultName,
-      templateId: examTemplateId.value,
-      examRange: examRange.value.trim(),
-      mode: mode.value,
-      ...(mixedVersion ? { mixedVersion, signal: controller.signal } : {}),
+    const result = await generateWordFromBank({
+      ...selection, apiKey: defaultStaffApiKey, sectionMode: "selected", signal: controller.signal,
+      ...(mixedVersion ? { mixedVersion } : {}),
     });
     if (controller.signal.aborted) return;
     if (!result.success) {
@@ -612,13 +627,16 @@ async function exportSelectedWord() {
     const url = URL.createObjectURL(result.blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = result.filename || outputFilename;
+    anchor.download = result.filename || selection.filename;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     status.value = "success";
-    message.value = "段考卷 Word 已開始下載。";
+    message.value = mixedVersion === "both" ? "教用與學用兩份 Word 已打包並開始下載。" : "段考卷 Word 已開始下載。";
+  } catch (error) {
+    if (controller.signal.aborted || error?.name === "AbortError") { status.value = "idle"; message.value = ""; }
+    else { status.value = "error"; message.value = "段考卷產生失敗，請稍後重試。"; }
   } finally {
     if (wordExportController === controller) wordExportController = null;
     exporting.value = false;
