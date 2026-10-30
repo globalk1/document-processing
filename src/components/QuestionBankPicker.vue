@@ -105,8 +105,10 @@
         <label>
           <span class="field-label">版本</span>
           <select v-model="mode" class="select-input">
-            <option value="teaching">教師版</option>
-            <option value="student">學生版</option>
+            <option value="mixed">教用學用混合</option>
+            <option value="teaching_brief">教用簡答</option>
+            <option value="teaching_detailed">教用詳解</option>
+            <option value="student">學用（僅題目）</option>
           </select>
         </label>
         <button
@@ -262,6 +264,7 @@ const props = defineProps({
 });
 const emit = defineEmits(["edit-question"]);
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from "vue";
+import { chooseMixedWordExport } from "../services/mixedWordExport";
 import MathText from "./MathText.vue";
 import QuestionAssetThumbnail from "./QuestionAssetThumbnail.vue";
 import QuestionPreviewModal from "./QuestionPreviewModal.vue";
@@ -321,7 +324,10 @@ const examTemplateId = ref("junior_exam_paper");
 const filename = ref("國中段考卷.docx");
 const title = ref("國中段考卷");
 const examRange = ref("");
-const mode = ref("teaching");
+const mode = ref("teaching_brief");
+let wordExportController = null;
+onBeforeUnmount(() => wordExportController?.abort());
+onDeactivated(() => wordExportController?.abort());
 const exporting = ref(false);
 const status = ref("idle");
 const message = ref("");
@@ -577,11 +583,17 @@ function handleExamTemplateChange() {
 async function exportSelectedWord() {
   if (!selectedQuestions.value.length || exporting.value) return;
   exporting.value = true;
+  const controller = new AbortController();
+  wordExportController = controller;
   status.value = "loading";
   message.value = "正在產生段考卷 Word...";
   const defaultName = examNames[examTemplateId.value];
   const outputFilename = (filename.value.trim() || `${defaultName}.docx`).replace(/\.docx$/i, "") + ".docx";
   try {
+    const mixedVersion = mode.value === "mixed" ? await chooseMixedWordExport(controller.signal) : null;
+    if (controller.signal.aborted || (mode.value === "mixed" && !mixedVersion)) {
+      status.value = "idle"; message.value = ""; return;
+    }
     const result = await generatePublicExamFromBank({
       questionIds: selectedQuestions.value.map((question) => question.id),
       filename: outputFilename,
@@ -589,7 +601,9 @@ async function exportSelectedWord() {
       templateId: examTemplateId.value,
       examRange: examRange.value.trim(),
       mode: mode.value,
+      ...(mixedVersion ? { mixedVersion, signal: controller.signal } : {}),
     });
+    if (controller.signal.aborted) return;
     if (!result.success) {
       status.value = "error";
       message.value = result.error || "段考卷產生失敗。";
@@ -606,6 +620,7 @@ async function exportSelectedWord() {
     status.value = "success";
     message.value = "段考卷 Word 已開始下載。";
   } finally {
+    if (wordExportController === controller) wordExportController = null;
     exporting.value = false;
   }
 }

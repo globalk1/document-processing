@@ -4,6 +4,8 @@ import { h, KeepAlive, nextTick, ref } from "vue";
 import DraftQuestionEntry from "../src/components/DraftQuestionEntry.vue";
 import QuestionBankPicker from "../src/components/QuestionBankPicker.vue";
 import QuestionFilterSelect from "../src/components/QuestionFilterSelect.vue";
+import { chooseMixedWordExport } from "../src/services/mixedWordExport";
+vi.mock("../src/services/mixedWordExport", () => ({ chooseMixedWordExport: vi.fn() }));
 
 const api = vi.hoisted(() => ({
   searchStaffMathBankQuestions: vi.fn(),
@@ -11,6 +13,7 @@ const api = vi.hoisted(() => ({
   listMathBankUnits: vi.fn(),
   listMathBankQuestionSources: vi.fn(),
   getStaffMathBankQuestion: vi.fn(),
+  generatePublicExamFromBank: vi.fn(),
 }));
 vi.mock("../src/services/api", async (importOriginal) => ({ ...await importOriginal(), ...api }));
 
@@ -54,6 +57,8 @@ async function chooseFilter(label, value) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  chooseMixedWordExport.mockResolvedValue("teacher");
+  api.generatePublicExamFromBank.mockResolvedValue({ success: false, error: "export checked" });
   observers = [];
   vi.stubGlobal("IntersectionObserver", class {
     constructor(callback, options) {
@@ -272,3 +277,18 @@ for (const [name, component, selector] of [
     });
   });
 }
+
+it.each(["teacher", "student", "both"])("public picker sends mixed %s through its existing export function", async (variant) => {
+  chooseMixedWordExport.mockResolvedValue(variant);
+  wrapper = mount(QuestionBankPicker, {
+    props: { subject: "english" },
+    global: { stubs: { MarkdownMathText: true, MathText: true, QuestionAssetThumbnail: true, VimMarkdownEditor: true } },
+  });
+  await settle();
+  await click("全選目前列表");
+  const mode = wrapper.findAll("select").find((select) => select.find('option[value="mixed"]').exists());
+  await mode.setValue("mixed");
+  await click("匯出段考卷 Word");
+  expect(api.generatePublicExamFromBank).toHaveBeenCalledTimes(1);
+  expect(api.generatePublicExamFromBank.mock.calls[0][0]).toMatchObject({ mode: "mixed", mixedVersion: variant });
+});

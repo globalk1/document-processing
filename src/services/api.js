@@ -814,10 +814,13 @@ export async function generateWordDocument({
   document,
   filename = "exam-paper.docx",
   templateId = "exam_paper",
+  mixedVersion,
+  signal,
 }) {
   try {
     const response = await fetch(`${API_URL}/word/generate/`, {
       method: "POST",
+      ...(signal ? { signal } : {}),
       headers: getAuthHeaders({
         "Content-Type": "application/json",
       }),
@@ -825,6 +828,7 @@ export async function generateWordDocument({
         document,
         filename,
         template_id: templateId,
+        ...(document?.metadata?.mode === "mixed" && mixedVersion ? { mixed_version: mixedVersion } : {}),
       }),
     });
 
@@ -856,6 +860,7 @@ export async function generateWordFromBank({
   title = "題庫選題講義",
   templateId = "high_school_math_handout",
   mode = "teaching",
+  mixedVersion,
   sectionMode = "unit",
   apiKey = "",
 }) {
@@ -874,6 +879,7 @@ export async function generateWordFromBank({
         title,
         template_id: templateId,
         mode,
+        ...(mode === "mixed" && mixedVersion ? { mixed_version: mixedVersion } : {}),
         section_mode: sectionMode,
       }),
     });
@@ -908,10 +914,13 @@ export async function generatePublicExamFromBank({
   templateId,
   examRange = "",
   mode = "teaching",
+  mixedVersion,
+  signal,
 }) {
   try {
     const response = await fetch(`${API_URL}/word/public-exams/generate-from-bank/`, {
       method: "POST",
+      ...(signal ? { signal } : {}),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         question_ids: questionIds,
@@ -920,6 +929,7 @@ export async function generatePublicExamFromBank({
         template_id: templateId,
         exam_range: examRange,
         mode,
+        ...(mode === "mixed" && mixedVersion ? { mixed_version: mixedVersion } : {}),
         section_mode: "selected",
       }),
     });

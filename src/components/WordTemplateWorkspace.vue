@@ -379,7 +379,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { chooseMixedWordExport } from "../services/mixedWordExport";
 import MathText from "./MathText.vue";
 import QuestionDifficultySelect from "./QuestionDifficultySelect.vue";
 import {
@@ -540,7 +541,11 @@ async function parseWord() {
   wordMessage.value = "題目解析完成。";
 }
 
+let wordExportController = null;
+onBeforeUnmount(() => wordExportController?.abort());
+
 async function generateWord() {
+  if (wordExportController) return;
   const document = getCurrentDocument();
   if (!document) return;
   if (!getDocumentQuestions(document).length) {
@@ -550,23 +555,35 @@ async function generateWord() {
   }
 
   wordStatus.value = "generating";
-  wordMessage.value = "正在套用模板並產生 Word...";
-  const result = await generateWordDocument({
-    document,
-    filename: outputFilename.value || "exam-paper.docx",
-    templateId: templateId.value,
-  });
+  const controller = new AbortController();
+  wordExportController = controller;
+  try {
+    const mixedVersion = document.metadata?.mode === "mixed" ? await chooseMixedWordExport(controller.signal) : null;
+    if (controller.signal.aborted || (document.metadata?.mode === "mixed" && !mixedVersion)) {
+      wordStatus.value = "idle"; wordMessage.value = ""; return;
+    }
+    wordMessage.value = "正在套用模板並產生 Word...";
+    const result = await generateWordDocument({
+      document,
+      filename: outputFilename.value || "exam-paper.docx",
+      templateId: templateId.value,
+      ...(mixedVersion ? { mixedVersion, signal: controller.signal } : {}),
+    });
+    if (controller.signal.aborted) return;
 
-  if (!result.success) {
-    wordStatus.value = "error";
-    wordMessage.value = result.error || "Word 文件產生失敗。";
-    return;
+    if (!result.success) {
+      wordStatus.value = "error";
+      wordMessage.value = result.error || "Word 文件產生失敗。";
+      return;
+    }
+
+    downloadBlob(result.blob, result.filename || outputFilename.value);
+    wordDocument.value = document;
+    wordStatus.value = "success";
+    wordMessage.value = "Word 已產生並開始下載。";
+  } finally {
+    if (wordExportController === controller) wordExportController = null;
   }
-
-  downloadBlob(result.blob, result.filename || outputFilename.value);
-  wordDocument.value = document;
-  wordStatus.value = "success";
-  wordMessage.value = "Word 已產生並開始下載。";
 }
 
 async function importQuestions() {
